@@ -948,19 +948,16 @@ async function registerCheck(type) {
   };
 
   if (type === 'entry') {
-    const [sh, sm] = CONFIG.startTime.split(':').map(Number);
-    const [nh, nm] = timeStr24.split(':').map(Number);
-    const diff = (nh*60+nm) - (sh*60+sm);
+    const diff = timeToMinutes(timeStr24) - timeToMinutes(CONFIG.startTime);
     rec.late = diff > CONFIG.tolerance ? diff : 0;
   }
 
   if (type === 'exit') {
     const entryRec = getRecordsToday(currentUser.user).find(r => r.type === 'entry');
     if (entryRec) {
-      const entryTime24 = entryRec.time24 || entryRec.time;
-      const [eh, em] = entryTime24.split(':').map(Number);
-      const [nh, nm] = timeStr24.split(':').map(Number);
-      const worked = (nh*60+nm) - (eh*60+em);
+      const entryMins = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
+      const exitMins = timeToMinutes(timeStr24);
+      const worked = exitMins - entryMins;
       const workDays = CONFIG.workDays || [1,2,3,4,5];
       const todayDow = new Date().getDay();
       const isWorkday = workDays.includes(todayDow);
@@ -970,8 +967,7 @@ async function registerCheck(type) {
         rec.extraMin = worked;
         rec.weekendWork = true;
       } else {
-        const [se, me2] = CONFIG.endTime.split(':').map(Number);
-        const scheduled = (se*60+me2) - (eh*60+em);
+        const scheduled = timeToMinutes(CONFIG.endTime) - entryMins;
         rec.extraMin = Math.max(0, worked - scheduled);
       }
     }
@@ -1283,6 +1279,26 @@ function fmtMin(m) {
   if (!m || m === 0) return '0h';
   const h = Math.floor(m/60), min = m%60;
   return h > 0 ? `${h}h ${min}m` : `${min}m`;
+}
+
+function timeToMinutes(timeStr) {
+  if (!timeStr) return 0;
+  // Handle 24h format: "08:30"
+  if (/^\d{1,2}:\d{2}$/.test(timeStr)) {
+    const [h, m] = timeStr.split(':').map(Number);
+    return h * 60 + m;
+  }
+  // Handle 12h format: "08:30 a.m." or "08:30 p.m."
+  const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)/i);
+  if (match) {
+    let h = parseInt(match[1]);
+    const m = parseInt(match[2]);
+    const ampm = match[3].toLowerCase().replace(/\./g, '');
+    if (ampm === 'pm' && h !== 12) h += 12;
+    if (ampm === 'am' && h === 12) h = 0;
+    return h * 60 + m;
+  }
+  return 0;
 }
 
 let toastTimer;
