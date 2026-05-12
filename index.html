@@ -694,6 +694,17 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { getFirestore, collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ════════════════════════════════
+//  SECURITY - PIN HASHING
+// ════════════════════════════════
+async function hashPin(pin) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(pin + 'viorsteel_salt_2026');
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ════════════════════════════════
 //  FIREBASE INIT
 // ════════════════════════════════
 const firebaseConfig = {
@@ -818,8 +829,11 @@ async function doLogin() {
   if (!u || !p) { showToast('Ingresa usuario y PIN', 'error'); return; }
   showToast('Verificando…', '');
 
-  // Auto-detect: check admin first
-  const adminMatch = DEMO_USERS.find(x => x.user === u && x.pin === p && x.role === 'admin');
+  // Hash the PIN for comparison
+  const hashedPin = await hashPin(p);
+
+  // Auto-detect: check admin first (compare both plain and hashed for backward compat)
+  const adminMatch = DEMO_USERS.find(x => x.user === u && (x.pin === p || x.pin === hashedPin) && x.role === 'admin');
   if (adminMatch) {
     currentUser = adminMatch;
     await loadConfigFromDB();
@@ -831,8 +845,18 @@ async function doLogin() {
 
   // Check collaborators from Firebase (includes admins added via panel)
   try {
-    const q2 = query(collection(db, 'users'), where('user', '==', u), where('pin', '==', p));
-    const snap = await getDocs(q2);
+    // Try hashed PIN first
+    let q2 = query(collection(db, 'users'), where('user', '==', u), where('pin', '==', hashedPin));
+    let snap = await getDocs(q2);
+    // Fallback to plain PIN for users not yet migrated, then auto-migrate
+    if (snap.empty) {
+      q2 = query(collection(db, 'users'), where('user', '==', u), where('pin', '==', p));
+      snap = await getDocs(q2);
+      if (!snap.empty) {
+        // Migrate plain PIN to hashed silently
+        try { await setDoc(doc(db, 'users', snap.docs[0].id), { pin: hashedPin }, { merge: true }); } catch(e) {}
+      }
+    }
     if (!snap.empty) {
       const data = snap.docs[0].data();
       currentUser = { ...data };
@@ -1814,7 +1838,8 @@ async function saveCollab() {
     const docId = editId || user;
     const role = document.getElementById('collabRole').value || 'emp';
     const saitNum = parseInt(document.getElementById('collabSaitNum').value) || null;
-    const data = { name, user, pin, role, saitNum, createdAt: new Date().toISOString() };
+    const hashedPinSave = await hashPin(pin);
+    const data = { name, user, pin: hashedPinSave, role, saitNum, createdAt: new Date().toISOString() };
     await setDoc(doc(db, 'users', docId), data);
     document.getElementById('collabModal').classList.remove('open');
     await loadCollabs();
