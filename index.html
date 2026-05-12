@@ -207,7 +207,7 @@
     border-radius: 12px; padding: 14px 16px; margin-bottom: 8px;
   }
   .log-type { font-size: 13px; font-weight: 500; }
-  .log-type.entry { color: var(--accent); }
+  .log-type.entry { color: #1a1f2e; }
   .log-type.exit { color: var(--accent2); }
   .log-time { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; }
   .log-loc { font-size: 11px; color: var(--muted); margin-top: 2px; }
@@ -216,7 +216,7 @@
   #adminScreen { background: var(--bg); }
 
   .admin-header {
-    background: linear-gradient(135deg, #C41230, #a00e25);
+    background: #1a1f2e;
     border-bottom: 1px solid var(--border);
     padding: 20px 24px;
   }
@@ -247,7 +247,7 @@
     border-radius: var(--radius); padding: 18px;
   }
   .stat-val { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .stat-val.green { color: var(--accent); }
+  .stat-val.green { color: #1a1f2e; }
   .stat-val.red { color: var(--accent2); }
   .stat-val.yellow { color: var(--accent3); }
   .stat-lbl { font-size: 12px; color: var(--muted); margin-top: 4px; }
@@ -270,7 +270,7 @@
   .emp-badge {
     padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 500;
   }
-  .badge-in { background: rgba(0,229,176,0.12); color: var(--accent); }
+  .badge-in { background: rgba(26,31,46,0.08); color: #1a1f2e; border: 1px solid rgba(26,31,46,0.15); }
   .badge-out { background: rgba(107,122,153,0.12); color: var(--muted); }
   .badge-late { background: rgba(255,209,102,0.12); color: var(--accent3); }
   .badge-absent { background: rgba(255,107,107,0.12); color: var(--accent2); }
@@ -517,7 +517,7 @@
       <div id="rptDashboard" style="display:none">
         <div class="section-title">Resumen de incidencias</div>
         <div class="stat-grid" style="margin-bottom:16px">
-          <div class="stat-card"><div class="stat-val green" id="rptPresent">0</div><div class="stat-lbl">Días con asistencia</div></div>
+          <div class="stat-card"><div class="stat-val" style="color:#1a1f2e" id="rptPresent">0</div><div class="stat-lbl">Días con asistencia</div></div>
           <div class="stat-card"><div class="stat-val red" id="rptAbsent">0</div><div class="stat-lbl">Faltas</div></div>
           <div class="stat-card"><div class="stat-val yellow" id="rptLate">0</div><div class="stat-lbl">Retardos</div></div>
           <div class="stat-card"><div class="stat-val" style="color:#2B4EAE" id="rptExtra">0h</div><div class="stat-lbl">Horas extras</div></div>
@@ -554,7 +554,7 @@
           <button onclick="window.setNomRange('week')" class="range-btn">Esta semana</button>
           <button onclick="window.setNomRange('last')" class="range-btn">Semana anterior</button>
         </div>
-        <button class="save-btn" onclick="window.loadNomina()" style="margin-top:12px">📋 Cargar incidencias</button>
+        <button class="save-btn" onclick="window.loadNomina()" style="margin-top:12px;background:linear-gradient(135deg,#2B4EAE,#1a3a8a)">📋 Cargar incidencias</button>
       </div>
 
       <div id="nominaContent" style="display:none">
@@ -565,7 +565,7 @@
         <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Captura los montos que apliquen para este periodo</div>
         <div id="nominaVariables"></div>
 
-        <button class="save-btn" onclick="window.exportSAIT()" style="margin-top:16px">
+        <button class="save-btn" onclick="window.exportSAIT()" style="margin-top:16px;background:linear-gradient(135deg,#2B4EAE,#1a3a8a)">
           📊 Descargar Excel para SAIT
         </button>
       </div>
@@ -1073,7 +1073,7 @@ function renderTodayLog() {
     recs.map(r => `
       <div class="log-entry">
         <div>
-          <div class="log-type ${r.type}">${r.type==='entry'?'🟢 Entrada':'🔴 Salida'}</div>
+          <div class="log-type" style="color:${r.type==='entry'?'#1a1f2e':'#C41230'}">${r.type==='entry'?'🟢 Entrada':'🔴 Salida'}</div>
           <div class="log-loc">📍 ${r.distance}m del trabajo${r.late>0?' · ⚠️ '+r.late+'min retardo':''}</div>
         </div>
         <div>
@@ -1132,7 +1132,7 @@ function renderAdmin() {
   document.getElementById('empLogList').innerHTML = today.length
     ? today.map(r => `<div class="log-entry">
         <div>
-          <div class="log-type ${r.type}">${r.type==='entry'?'🟢 Entrada':'🔴 Salida'} — ${r.name}</div>
+          <div class="log-type" style="color:${r.type==='entry'?'#1a1f2e':'#C41230'}">${r.type==='entry'?'🟢 Entrada':'🔴 Salida'} — ${r.name}</div>
           <div class="log-loc">📍 ${r.distance}m · ${r.lat?.toFixed(4)},${r.lng?.toFixed(4)}</div>
         </div>
         <div class="log-time">${r.time}</div>
@@ -1524,7 +1524,7 @@ function renderReportDashboard(from, to) {
     ? REPORT_RECORDS.slice().sort((a,b) => b.timestamp?.localeCompare(a.timestamp)).map(r => `
         <div class="log-entry">
           <div>
-            <div class="log-type ${r.type}">${r.type==='entry'?'🟢 Entrada':'🔴 Salida'} — ${r.name}</div>
+            <div class="log-type" style="color:${r.type==='entry'?'#1a1f2e':'#C41230'}">${r.type==='entry'?'🟢 Entrada':'🔴 Salida'} — ${r.name}</div>
             <div class="log-loc">${r.date} · 📍${r.distance}m</div>
           </div>
           <div class="log-time">${r.time}</div>
