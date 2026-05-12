@@ -455,6 +455,7 @@
     <div class="tab" onclick="switchTab('empleados')">Empleados</div>
     <div class="tab" onclick="switchTab('reportes')">Reportes</div>
     <div class="tab" onclick="switchTab('colaboradores')">Equipo</div>
+    <div class="tab" onclick="switchTab('nomina')">Nómina</div>
     <div class="tab" onclick="switchTab('config')">Config</div>
   </div>
 
@@ -534,6 +535,39 @@
         <!-- Records list -->
         <div class="section-title" style="margin-top:8px">Registros del periodo</div>
         <div id="rptRecordsList"></div>
+      </div>
+    </div>
+
+    <!-- Nómina -->
+    <div id="tab-nomina" class="tab-content">
+      <div class="config-card" style="margin-bottom:16px">
+        <div class="config-title">📅 Periodo de nómina</div>
+        <div class="config-row">
+          <div class="config-label">Desde</div>
+          <input class="config-input" id="nomFrom" type="date">
+        </div>
+        <div class="config-row">
+          <div class="config-label">Hasta</div>
+          <input class="config-input" id="nomTo" type="date">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button onclick="window.setNomRange('week')" class="range-btn">Esta semana</button>
+          <button onclick="window.setNomRange('last')" class="range-btn">Semana anterior</button>
+        </div>
+        <button class="save-btn" onclick="window.loadNomina()" style="margin-top:12px">📋 Cargar incidencias</button>
+      </div>
+
+      <div id="nominaContent" style="display:none">
+        <div class="section-title">Incidencias del periodo</div>
+        <div id="nominaTable" style="margin-bottom:16px;overflow-x:auto"></div>
+
+        <div class="section-title">Conceptos variables</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Captura los montos que apliquen para este periodo</div>
+        <div id="nominaVariables"></div>
+
+        <button class="save-btn" onclick="window.exportSAIT()" style="margin-top:16px">
+          📊 Descargar Excel para SAIT
+        </button>
       </div>
     </div>
 
@@ -626,6 +660,9 @@
 
     <div class="field-label">PIN (4-6 dígitos)</div>
     <input class="field-input" id="collabPin" type="password" placeholder="••••" maxlength="6" inputmode="numeric">
+
+    <div class="field-label">Número de trabajador SAIT</div>
+    <input class="field-input" id="collabSaitNum" type="number" placeholder="Ej: 24" min="1">
 
     <div class="field-label">Rol</div>
     <div style="display:flex;gap:8px;margin-bottom:20px">
@@ -1111,6 +1148,15 @@ function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   if (name === 'colaboradores') loadCollabs();
+  else if (name === 'nomina') {
+    // Set default to last week
+    const now = new Date();
+    const day = now.getDay();
+    const daysSinceThursday = (day + 3) % 7;
+    const thu = new Date(now); thu.setDate(now.getDate() - daysSinceThursday);
+    document.getElementById('nomFrom').value = dateToStr(thu);
+    document.getElementById('nomTo').value = dateToStr(now);
+  }
   else if (name !== 'config') renderAdmin();
 }
 
@@ -1501,6 +1547,173 @@ function exportIncidencesCSV() {
 }
 
 // ════════════════════════════════
+//  NÓMINA SAIT
+// ════════════════════════════════
+let NOMINA_RECORDS = [];
+let NOMINA_EMPS = [];
+
+function setNomRange(type) {
+  const now = new Date();
+  let from, to;
+  document.querySelectorAll('#tab-nomina .range-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  if (type === 'week') {
+    const day = now.getDay();
+    const daysSinceThursday = (day + 3) % 7;
+    const thu = new Date(now); thu.setDate(now.getDate() - daysSinceThursday);
+    from = dateToStr(thu);
+    to = dateToStr(now);
+  } else if (type === 'last') {
+    const day = now.getDay();
+    const daysSinceThursday = (day + 3) % 7;
+    const lastWed = new Date(now); lastWed.setDate(now.getDate() - daysSinceThursday - 1);
+    const lastThu = new Date(lastWed); lastThu.setDate(lastWed.getDate() - 6);
+    from = dateToStr(lastThu);
+    to = dateToStr(lastWed);
+  }
+  document.getElementById('nomFrom').value = from;
+  document.getElementById('nomTo').value = to;
+}
+
+async function loadNomina() {
+  const from = document.getElementById('nomFrom').value;
+  const to   = document.getElementById('nomTo').value;
+  if (!from || !to) { showToast('Selecciona el periodo', 'error'); return; }
+  showToast('Cargando incidencias…', '');
+  try {
+    const q = query(collection(db, 'records'), where('date', '>=', from), where('date', '<=', to));
+    const snap = await getDocs(q);
+    NOMINA_RECORDS = snap.docs.map(d => d.data());
+    NOMINA_EMPS = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin') : DEMO_USERS.filter(u => u.role === 'emp');
+    renderNomina(from, to);
+    document.getElementById('nominaContent').style.display = 'block';
+    showToast('✅ Incidencias cargadas', 'success');
+  } catch(e) { showToast('⚠️ Error: ' + e.message, 'error'); }
+}
+
+function renderNomina(from, to) {
+  const workDays = CONFIG.workDays || [1,2,3,4,5];
+  const dates = [];
+  let cur = new Date(from + 'T12:00:00');
+  const end = new Date(to + 'T12:00:00');
+  while (cur <= end) {
+    const d = dateToStr(cur);
+    if (workDays.includes(cur.getDay()) && !isHoliday(d)) dates.push(d);
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  // Build incidences table
+  let tableHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="background:var(--surface2)">
+        <th style="padding:10px;text-align:left;border-bottom:1px solid var(--border)">Colaborador</th>
+        <th style="padding:10px;text-align:center;border-bottom:1px solid var(--border)">Días trab.</th>
+        <th style="padding:10px;text-align:center;border-bottom:1px solid var(--border)">Faltas</th>
+        <th style="padding:10px;text-align:center;border-bottom:1px solid var(--border)">Retardos</th>
+        <th style="padding:10px;text-align:center;border-bottom:1px solid var(--border)">H.Extra</th>
+      </tr>
+    </thead><tbody>`;
+
+  NOMINA_EMPS.forEach(emp => {
+    let worked=0, absent=0, late=0, extraMin=0;
+    dates.forEach(date => {
+      const recs = NOMINA_RECORDS.filter(r => r.userId === emp.user && r.date === date);
+      const entry = recs.find(r => r.type === 'entry');
+      const exit  = recs.find(r => r.type === 'exit');
+      if (!entry) absent++;
+      else { worked++; if (entry.late > 0) late++; if (exit?.extraMin) extraMin += exit.extraMin; }
+    });
+    const extraHrs = extraMin / 60;
+    tableHTML += `<tr>
+      <td style="padding:10px;border-bottom:1px solid var(--border);font-weight:500">${emp.name}</td>
+      <td style="padding:10px;text-align:center;border-bottom:1px solid var(--border);color:#2B4EAE;font-weight:600">${worked}</td>
+      <td style="padding:10px;text-align:center;border-bottom:1px solid var(--border);color:#C41230;font-weight:600">${absent}</td>
+      <td style="padding:10px;text-align:center;border-bottom:1px solid var(--border);color:#e8a020;font-weight:600">${late}</td>
+      <td style="padding:10px;text-align:center;border-bottom:1px solid var(--border);color:#6366f1;font-weight:600">${extraHrs.toFixed(2)}</td>
+    </tr>`;
+  });
+  tableHTML += '</tbody></table>';
+  document.getElementById('nominaTable').innerHTML = tableHTML;
+
+  // Build variables inputs per employee
+  const concepts = [
+    { id: 'bono',      label: 'Bono Productividad',  clave: 5,  tipo: 1 },
+    { id: 'prestNom',  label: 'Préstamo de Nómina',  clave: 8,  tipo: 1 },
+    { id: 'prestPers', label: 'Préstamo Personal',   clave: 55, tipo: 2 },
+    { id: 'infonavit', label: 'INFONAVIT',            clave: 56, tipo: 2 },
+    { id: 'otrasDed',  label: 'Otras Deducciones',   clave: 54, tipo: 2 },
+  ];
+
+  let varsHTML = NOMINA_EMPS.map(emp => `
+    <div class="config-card" style="margin-bottom:12px">
+      <div class="config-title" style="font-size:14px">👤 ${emp.name}</div>
+      ${concepts.map(c => `
+        <div class="config-row">
+          <div class="config-label" style="font-size:13px">${c.label}</div>
+          <input class="config-input" id="nom_${emp.user}_${c.id}" type="number" min="0" step="0.01" placeholder="0.00" style="width:120px">
+        </div>`).join('')}
+    </div>`).join('');
+
+  document.getElementById('nominaVariables').innerHTML = varsHTML;
+}
+
+async function exportSAIT() {
+  const from = document.getElementById('nomFrom').value;
+  const to   = document.getElementById('nomTo').value;
+  const workDays = CONFIG.workDays || [1,2,3,4,5];
+
+  const dates = [];
+  let cur = new Date(from + 'T12:00:00');
+  const end = new Date(to + 'T12:00:00');
+  while (cur <= end) {
+    const d = dateToStr(cur);
+    if (workDays.includes(cur.getDay()) && !isHoliday(d)) dates.push(d);
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  const concepts = [
+    { id: 'bono',      clave: 5,   tipo: 1 },
+    { id: 'prestNom',  clave: 8,   tipo: 1 },
+    { id: 'prestPers', clave: 55,  tipo: 2 },
+    { id: 'infonavit', clave: 56,  tipo: 2 },
+    { id: 'otrasDed',  clave: 54,  tipo: 2 },
+  ];
+
+  // SAIT format: Col1=NumTrabajador, Col2=NumConcepto, Col3=TipoMovimiento, Col4=Cantidad
+  const rows = [['Num_Trabajador', 'Num_Concepto', 'Tipo_Movimiento', 'Cantidad']];
+
+  NOMINA_EMPS.forEach((emp, idx) => {
+    const numTrab = emp.saitNum || (idx + 1); // Use SAIT number if available
+    let worked=0, absent=0, extraMin=0;
+
+    dates.forEach(date => {
+      const recs = NOMINA_RECORDS.filter(r => r.userId === emp.user && r.date === date);
+      const entry = recs.find(r => r.type === 'entry');
+      const exit  = recs.find(r => r.type === 'exit');
+      if (entry) { worked++; if (exit?.extraMin) extraMin += exit.extraMin; }
+      else absent++;
+    });
+
+    const extraHrs = extraMin / 60;
+
+    // Días trabajados (concepto 130, tipo 1)
+    if (worked > 0) rows.push([numTrab, 130, 1, worked]);
+
+    // Horas extra dobles (concepto 612, tipo 1)
+    if (extraHrs > 0) rows.push([numTrab, 612, 1, extraHrs.toFixed(2)]);
+
+    // Conceptos variables
+    concepts.forEach(c => {
+      const val = parseFloat(document.getElementById(`nom_${emp.user}_${c.id}`)?.value || 0);
+      if (val > 0) rows.push([numTrab, c.clave, c.tipo, val]);
+    });
+  });
+
+  downloadCSV(rows, `SAIT_nomina_${from}_${to}.csv`);
+  showToast('📊 Archivo SAIT descargado', 'success');
+}
+
+// ════════════════════════════════
 //  COLLABORATOR MANAGEMENT
 // ════════════════════════════════
 let COLLABS = [];
@@ -1550,7 +1763,7 @@ function renderCollabList() {
       <div class="emp-avatar" style="background:${c.role==='admin'?'linear-gradient(135deg,#2B4EAE,#1a3a8a)':'linear-gradient(135deg,#C41230,#a00e25)'}">${c.name ? c.name[0].toUpperCase() : '?'}</div>
       <div class="emp-info">
         <div class="emp-name">${c.name}</div>
-        <div class="emp-detail">@${c.user} · <span style="color:${c.role==='admin'?'#2B4EAE':'#C41230'};font-weight:600">${c.role==='admin'?'Admin':'Empleado'}</span></div>
+        <div class="emp-detail">@${c.user} · <span style="color:${c.role==='admin'?'#2B4EAE':'#C41230'};font-weight:600">${c.role==='admin'?'Admin':'Empleado'}</span>${c.saitNum?' · SAIT #'+c.saitNum:' · <span style="color:#e8a020">Sin # SAIT</span>'}</div>
       </div>
       <div style="display:flex;gap:8px">
         <button onclick="window.editCollab('${c.id}')" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-size:12px;cursor:pointer">Editar</button>
@@ -1566,6 +1779,7 @@ function showAddCollab() {
   document.getElementById('collabUser').value = '';
   document.getElementById('collabPin').value = '';
   document.getElementById('collabUser').disabled = false;
+  document.getElementById('collabSaitNum').value = '';
   selectRole('emp');
   document.getElementById('collabModal').classList.add('open');
 }
@@ -1579,6 +1793,7 @@ function editCollab(id) {
   document.getElementById('collabUser').value = c.user || '';
   document.getElementById('collabPin').value = c.pin || '';
   document.getElementById('collabUser').disabled = true;
+  document.getElementById('collabSaitNum').value = c.saitNum || '';
   selectRole(c.role || 'emp');
   document.getElementById('collabModal').classList.add('open');
 }
@@ -1598,7 +1813,8 @@ async function saveCollab() {
   try {
     const docId = editId || user;
     const role = document.getElementById('collabRole').value || 'emp';
-    const data = { name, user, pin, role, createdAt: new Date().toISOString() };
+    const saitNum = parseInt(document.getElementById('collabSaitNum').value) || null;
+    const data = { name, user, pin, role, saitNum, createdAt: new Date().toISOString() };
     await setDoc(doc(db, 'users', docId), data);
     document.getElementById('collabModal').classList.remove('open');
     await loadCollabs();
@@ -1647,6 +1863,9 @@ window.exportIncidencesCSV = exportIncidencesCSV;
 window.showEmpDetail = showEmpDetail;
 window.closeModal = closeModal;
 window.showAddCollab = showAddCollab;
+window.setNomRange = setNomRange;
+window.loadNomina = loadNomina;
+window.exportSAIT = exportSAIT;
 window.selectRole = selectRole;
 window.editCollab = editCollab;
 window.saveCollab = saveCollab;
