@@ -750,7 +750,18 @@ function saveData() {
 }
 
 function todayStr() {
-  return new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth()+1).padStart(2,'0');
+  const d = String(now.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
+
+function dateToStr(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth()+1).padStart(2,'0');
+  const d = String(date.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
 }
 
 function getRecordsToday(userId) {
@@ -1332,14 +1343,14 @@ function setRange(type) {
     // Days since last Thursday
     const daysSinceThursday = (day + 3) % 7; // Thu=0, Fri=1, Sat=2, Sun=3, Mon=4, Tue=5, Wed=6
     const thu = new Date(now); thu.setDate(now.getDate() - daysSinceThursday);
-    from = thu.toISOString().split('T')[0];
+    from = dateToStr(thu);
     to = todayStr();
   } else if (type === 'month') {
     from = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
     to = todayStr();
   } else if (type === 'last30') {
     const d = new Date(now); d.setDate(d.getDate() - 30);
-    from = d.toISOString().split('T')[0];
+    from = dateToStr(d);
     to = todayStr();
   }
   document.getElementById('rptFrom').value = from;
@@ -1377,7 +1388,7 @@ function renderReportDashboard(from, to) {
   const end = new Date(to + 'T12:00:00');
   const workDays = CONFIG.workDays || [1,2,3,4,5];
   while (cur <= end) {
-    const d = cur.toISOString().split('T')[0];
+    const d = dateToStr(cur);
     const dow = cur.getDay();
     if (workDays.includes(dow) && !isHoliday(d)) dates.push(d);
     cur.setDate(cur.getDate() + 1);
@@ -1467,7 +1478,7 @@ function exportIncidencesCSV() {
   const end = new Date(to + 'T12:00:00');
   const workDaysExp = CONFIG.workDays || [1,2,3,4,5];
   while (cur <= end) {
-    const d = cur.toISOString().split('T')[0];
+    const d = dateToStr(cur);
     if (workDaysExp.includes(cur.getDay()) && !isHoliday(d)) dates.push(d);
     cur.setDate(cur.getDate() + 1);
   }
