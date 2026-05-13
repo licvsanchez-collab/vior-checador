@@ -487,7 +487,10 @@
 
     <!-- Empleados -->
     <div id="tab-empleados" class="tab-content">
-      <div class="section-title">Registros de hoy</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="section-title" style="margin-bottom:0">Registros de hoy</div>
+        <button onclick="window.openManualModal()" style="background:linear-gradient(135deg,#2B4EAE,#1a3a8a);border:none;border-radius:10px;padding:10px 14px;color:#fff;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer">+ Registro manual</button>
+      </div>
       <div id="empLogList"></div>
     </div>
 
@@ -645,6 +648,41 @@
 </div>
 
 <!-- Modal detalle empleado -->
+<!-- Manual Register Modal -->
+<div class="modal-overlay" id="manualModal" onclick="closeManualModal(event)">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">📝 Registro manual</div>
+
+    <div class="field-label">Colaborador</div>
+    <select class="field-input" id="manualEmp" style="background:var(--surface2);cursor:pointer">
+      <option value="">Selecciona un colaborador</option>
+    </select>
+
+    <div class="field-label">Tipo de registro</div>
+    <div style="display:flex;gap:8px;margin-bottom:20px">
+      <button type="button" id="manualTypeEntry" onclick="window.selectManualType('entry')" style="flex:1;padding:12px;border-radius:10px;border:2px solid #1a1f2e;background:rgba(26,31,46,0.08);color:#1a1f2e;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;cursor:pointer">🟢 Entrada</button>
+      <button type="button" id="manualTypeExit" onclick="window.selectManualType('exit')" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer">🔴 Salida</button>
+    </div>
+    <input type="hidden" id="manualType" value="entry">
+
+    <div class="field-label">Fecha</div>
+    <input class="field-input" id="manualDate" type="date">
+
+    <div class="field-label">Hora</div>
+    <input class="field-input" id="manualTime" type="time">
+
+    <div style="background:rgba(232,160,32,0.1);border:1px solid rgba(232,160,32,0.3);border-radius:10px;padding:12px;margin-bottom:20px;font-size:12px;color:#e8a020">
+      ⚠️ Este registro quedará marcado como <b>manual</b> en el sistema
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button class="save-btn" id="btnSaveManual" onclick="window.saveManualRecord()" style="flex:1">Guardar registro</button>
+      <button class="close-modal" onclick="document.getElementById('manualModal').classList.remove('open')" style="flex:1">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Add/Edit Collaborator Modal -->
 <div class="modal-overlay" id="collabModal" onclick="closeCollabModal(event)">
   <div class="modal">
@@ -1156,6 +1194,8 @@ function renderAdmin() {
           <div style="font-family:'Syne',sans-serif;font-weight:700;color:#1a1f2e">${g.exit?.workedMin ? fmtMin(g.exit.workedMin) : '—'}</div>
         </div>
       </div>
+      ${(g.entry?.manual || g.exit?.manual) ? '<div style="font-size:11px;color:#e8a020;margin-top:4px">✏️ Contiene registro manual</div>' : ''}
+      </div>
     </div>`).join('');
   document.getElementById('empLogList').innerHTML = Object.keys(empGroups).length
     ? empGroupsHTML
@@ -1600,6 +1640,115 @@ function exportIncidencesCSV() {
 }
 
 // ════════════════════════════════
+//  MANUAL REGISTER
+// ════════════════════════════════
+function openManualModal() {
+  // Populate collaborators dropdown
+  const sel = document.getElementById('manualEmp');
+  sel.innerHTML = '<option value="">Selecciona un colaborador</option>';
+  const emps = COLLABS.filter(c => c.role !== 'admin');
+  emps.forEach(emp => {
+    const opt = document.createElement('option');
+    opt.value = emp.user;
+    opt.textContent = emp.name;
+    sel.appendChild(opt);
+  });
+  // Set default date to today
+  document.getElementById('manualDate').value = todayStr();
+  document.getElementById('manualTime').value = '';
+  selectManualType('entry');
+  document.getElementById('manualModal').classList.add('open');
+}
+
+function selectManualType(type) {
+  document.getElementById('manualType').value = type;
+  const entryBtn = document.getElementById('manualTypeEntry');
+  const exitBtn  = document.getElementById('manualTypeExit');
+  if (type === 'entry') {
+    entryBtn.style.border = '2px solid #1a1f2e';
+    entryBtn.style.background = 'rgba(26,31,46,0.08)';
+    entryBtn.style.color = '#1a1f2e';
+    exitBtn.style.border = '1px solid var(--border)';
+    exitBtn.style.background = 'transparent';
+    exitBtn.style.color = 'var(--muted)';
+  } else {
+    exitBtn.style.border = '2px solid #C41230';
+    exitBtn.style.background = 'rgba(196,18,48,0.08)';
+    exitBtn.style.color = '#C41230';
+    entryBtn.style.border = '1px solid var(--border)';
+    entryBtn.style.background = 'transparent';
+    entryBtn.style.color = 'var(--muted)';
+  }
+}
+
+async function saveManualRecord() {
+  const userId = document.getElementById('manualEmp').value;
+  const type   = document.getElementById('manualType').value;
+  const date   = document.getElementById('manualDate').value;
+  const time24 = document.getElementById('manualTime').value;
+
+  if (!userId || !date || !time24) { showToast('Completa todos los campos', 'error'); return; }
+
+  const emp = COLLABS.find(c => c.user === userId);
+  if (!emp) { showToast('Colaborador no encontrado', 'error'); return; }
+
+  const btn = document.getElementById('btnSaveManual');
+  btn.textContent = '⏳ Guardando…'; btn.disabled = true;
+
+  try {
+    // Format display time
+    const [h, m] = time24.split(':').map(Number);
+    const ampm = h >= 12 ? 'p.m.' : 'a.m.';
+    const h12 = h % 12 || 12;
+    const timeDisplay = `${String(h12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${ampm}`;
+
+    const rec = {
+      id: Date.now(),
+      userId, name: emp.name,
+      type, date, time: timeDisplay, time24,
+      timestamp: new Date(date + 'T' + time24).toISOString(),
+      manual: true, // Mark as manual
+      registeredBy: currentUser.name,
+      lat: CONFIG.lat, lng: CONFIG.lng, distance: 0
+    };
+
+    // Calculate late if entry
+    if (type === 'entry') {
+      const diff = timeToMinutes(time24) - timeToMinutes(CONFIG.startTime);
+      rec.late = diff > CONFIG.tolerance ? diff : 0;
+    }
+
+    // Calculate worked/extra if exit
+    if (type === 'exit') {
+      const dayRecords = RECORDS.filter(r => r.userId === userId && r.date === date);
+      const entryRec = dayRecords.find(r => r.type === 'entry');
+      if (entryRec) {
+        const entryMins = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
+        const exitMins  = timeToMinutes(time24);
+        const lunchMin  = CONFIG.lunchMin || 60;
+        rec.workedMin   = Math.max(0, exitMins - entryMins - lunchMin);
+        const endMins   = timeToMinutes(CONFIG.endTime);
+        const overMin   = exitMins - endMins;
+        rec.extraMin    = overMin >= 30 ? overMin : 0;
+      }
+    }
+
+    await setDoc(doc(db, 'records', String(rec.id)), rec);
+    document.getElementById('manualModal').classList.remove('open');
+    showToast(`✅ Registro manual guardado — ${emp.name}`, 'success');
+    renderAdmin();
+  } catch(e) {
+    showToast('⚠️ Error: ' + e.message, 'error');
+  } finally {
+    btn.textContent = 'Guardar registro'; btn.disabled = false;
+  }
+}
+
+function closeManualModal(e) {
+  if (e.target.id === 'manualModal') document.getElementById('manualModal').classList.remove('open');
+}
+
+// ════════════════════════════════
 //  NÓMINA SAIT
 // ════════════════════════════════
 let NOMINA_RECORDS = [];
@@ -1917,6 +2066,10 @@ window.exportIncidencesCSV = exportIncidencesCSV;
 window.showEmpDetail = showEmpDetail;
 window.closeModal = closeModal;
 window.showAddCollab = showAddCollab;
+window.openManualModal = openManualModal;
+window.selectManualType = selectManualType;
+window.saveManualRecord = saveManualRecord;
+window.closeManualModal = closeManualModal;
 window.setNomRange = setNomRange;
 window.loadNomina = loadNomina;
 window.exportSAIT = exportSAIT;
