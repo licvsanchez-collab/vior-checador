@@ -1072,7 +1072,10 @@ async function registerCheck(type) {
   if (type === 'exit') {
     const entryRec = getRecordsToday(currentUser.user).find(r => r.type === 'entry');
     if (entryRec) {
-      const entryMins = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
+      const rawEntryMins = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
+      const startMins = timeToMinutes(CONFIG.startTime);
+      // Effective start = max(actual checkin, official start time)
+      const entryMins = Math.max(rawEntryMins, startMins);
       const exitMins = timeToMinutes(timeStr24);
       const worked = exitMins - entryMins;
       const workDays = CONFIG.workDays || [1,2,3,4,5];
@@ -1085,8 +1088,7 @@ async function registerCheck(type) {
         rec.weekendWork = true;
       } else {
         const endMins = timeToMinutes(CONFIG.endTime);
-        const overMin = exitMins - endMins; // minutes after official end
-        // Count extra if 30+ min after end time, counting from official end
+        const overMin = exitMins - endMins;
         rec.extraMin = overMin >= 30 ? overMin : 0;
       }
     }
@@ -1723,10 +1725,11 @@ async function saveManualRecord() {
       const dayRecords = RECORDS.filter(r => r.userId === userId && r.date === date);
       const entryRec = dayRecords.find(r => r.type === 'entry');
       if (entryRec) {
-        const entryMins = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
+        const rawEntryMins2 = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
+        const effectiveEntry = Math.max(rawEntryMins2, timeToMinutes(CONFIG.startTime));
         const exitMins  = timeToMinutes(time24);
         const lunchMin  = CONFIG.lunchMin || 60;
-        rec.workedMin   = Math.max(0, exitMins - entryMins - lunchMin);
+        rec.workedMin   = Math.max(0, exitMins - effectiveEntry - lunchMin);
         const endMins   = timeToMinutes(CONFIG.endTime);
         const overMin   = exitMins - endMins;
         rec.extraMin    = overMin >= 30 ? overMin : 0;
