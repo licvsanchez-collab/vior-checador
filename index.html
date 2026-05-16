@@ -510,6 +510,7 @@
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
           <button onclick="window.setRange('today')" class="range-btn">Hoy</button>
           <button onclick="window.setRange('week')" class="range-btn">Esta semana</button>
+          <button onclick="window.setRange('lastweek')" class="range-btn">Semana anterior</button>
           <button onclick="window.setRange('month')" class="range-btn">Este mes</button>
           <button onclick="window.setRange('last30')" class="range-btn">Últimos 30 días</button>
         </div>
@@ -532,8 +533,7 @@
 
         <!-- Export buttons -->
         <div class="section-title">Exportar</div>
-        <button class="export-btn" onclick="window.exportRangeCSV()">📊 Descargar CSV — Registros detallados</button>
-        <button class="export-btn" onclick="window.exportIncidencesCSV()">📋 Descargar CSV — Resumen de incidencias</button>
+        <button class="export-btn" onclick="window.exportIncidencesCSV()">📊 Descargar Excel — Reporte de incidencias</button>
 
         <!-- Records list -->
         <div class="section-title" style="margin-top:8px">Registros del periodo</div>
@@ -835,7 +835,15 @@ function startRealtimeListener() {
     RECORDS = snap.docs.map(d => d.data());
     if (currentUser?.role === 'admin') renderAdmin();
     else if (currentUser?.role === 'emp') { renderTodayLog(); updateButtons(); }
-  }, err => console.log('Listener error', err));
+  }, async err => {
+    console.log('Listener error:', err);
+    // Fallback: load records manually if listener fails
+    try {
+      await loadRecordsFromDB();
+      if (currentUser?.role === 'admin') renderAdmin();
+      else if (currentUser?.role === 'emp') { renderTodayLog(); updateButtons(); }
+    } catch(e) { console.log('Fallback load error:', e); }
+  });
 }
 
 function saveData() {
@@ -950,6 +958,7 @@ async function showAdmin() {
     now.toLocaleDateString('es-MX', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
   loadConfig();
   await loadCollabs();
+  await loadRecordsFromDB();
   renderAdmin();
   // Set default report dates
   const today = todayStr();
@@ -1486,6 +1495,15 @@ function setRange(type) {
     const thu = new Date(now); thu.setDate(now.getDate() - daysSinceThursday);
     from = dateToStr(thu);
     to = todayStr();
+  } else if (type === 'lastweek') {
+    const day = now.getDay();
+    const daysSinceThursday = (day + 3) % 7;
+    // Last Wednesday (end of previous week)
+    const lastWed = new Date(now); lastWed.setDate(now.getDate() - daysSinceThursday - 1);
+    // Last Thursday (start of previous week)
+    const lastThu = new Date(lastWed); lastThu.setDate(lastWed.getDate() - 6);
+    from = dateToStr(lastThu);
+    to = dateToStr(lastWed);
   } else if (type === 'month') {
     from = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
     to = todayStr();
@@ -1583,17 +1601,49 @@ function renderReportDashboard(from, to) {
   document.getElementById('rptExtra').textContent = fmtMin(totalExtraMin);
   document.getElementById('rptEmpBreakdown').innerHTML = empRows.join('') || '<div class="empty-state"><div class="empty-icon">📭</div>Sin colaboradores</div>';
 
-  // Records list
-  document.getElementById('rptRecordsList').innerHTML = REPORT_RECORDS.length
-    ? REPORT_RECORDS.slice().sort((a,b) => b.timestamp?.localeCompare(a.timestamp)).map(r => `
-        <div class="log-entry">
-          <div>
-            <div class="log-type" style="color:${r.type==='entry'?'#1a1f2e':'#C41230'}">${r.type==='entry'?'🟢 Entrada':'🔴 Salida'} — ${r.name}</div>
-            <div class="log-loc">${r.date} · 📍${r.distance}m</div>
+  // Records list - grouped by collaborator and date
+  if (REPORT_RECORDS.length) {
+    const grouped = {};
+    REPORT_RECORDS.forEach(r => {
+      const key = r.userId + '_' + r.date;
+      if (!grouped[key]) grouped[key] = { name: r.name, date: r.date, entry: null, exit: null };
+      if (r.type === 'entry') grouped[key].entry = r;
+      else grouped[key].exit = r;
+    });
+    const sortedKeys = Object.keys(grouped).sort((a,b) => {
+      const [uA, dA] = a.split('_'); const [uB, dB] = b.split('_');
+      return uA.localeCompare(uB) || dA.localeCompare(dB);
+    });
+    let lastUser = '';
+    const html = sortedKeys.map(key => {
+      const g = grouped[key];
+      const header = g.name !== lastUser ? `<div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:#1a1f2e;margin:16px 0 8px;padding-bottom:4px;border-bottom:2px solid #C41230">${g.name}</div>` : '';
+      lastUser = g.name;
+      return header + `<div class="log-entry" style="margin-bottom:6px">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:500;color:var(--muted)">${g.date}</div>
+        </div>
+        <div style="display:flex;gap:16px;align-items:center">
+          <div style="text-align:center">
+            <div style="font-size:11px;color:var(--muted)">Entrada</div>
+            <div style="font-weight:700;color:#1a1f2e">${g.entry?.time || '—'}</div>
           </div>
-          <div class="log-time">${r.time}</div>
-        </div>`).join('')
-    : '<div class="empty-state"><div class="empty-icon">📭</div>Sin registros en este periodo</div>';
+          <div style="text-align:center">
+            <div style="font-size:11px;color:var(--muted)">Salida</div>
+            <div style="font-weight:700;color:#C41230">${g.exit?.time || '—'}</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:11px;color:var(--muted)">Trabajado</div>
+            <div style="font-weight:700;color:#2B4EAE">${g.exit?.workedMin ? fmtMin(g.exit.workedMin) : '—'}</div>
+          </div>
+          ${g.exit?.extraMin > 0 ? `<div style="text-align:center"><div style="font-size:11px;color:var(--muted)">Extra</div><div style="font-weight:700;color:#6366f1">${fmtMin(g.exit.extraMin)}</div></div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+    document.getElementById('rptRecordsList').innerHTML = html;
+  } else {
+    document.getElementById('rptRecordsList').innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>Sin registros en este periodo</div>';
+  }
 }
 
 function exportRangeCSV() {
@@ -1625,8 +1675,10 @@ function exportIncidencesCSV() {
   }
 
   const rows = [['Colaborador','Fecha','Entrada','Salida','Retardo','Horas Trabajadas','Horas Extra','Incidencia']];
-  dates.forEach(date => {
-    emps.forEach(emp => {
+  
+  // Group by collaborator with blank row between each
+  emps.forEach(emp => {
+    dates.forEach(date => {
       const recs = REPORT_RECORDS.filter(r => r.userId === emp.user && r.date === date);
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
@@ -1637,451 +1689,10 @@ function exportIncidencesCSV() {
         exit?.extraMin ? fmtMin(exit.extraMin) : '',
         incidencia]);
     });
+    rows.push(['','','','','','','','']); // blank row between collaborators
   });
+
   downloadCSV(rows, `incidencias_${from}_${to}.csv`);
 }
 
-// ════════════════════════════════
-//  MANUAL REGISTER
-// ════════════════════════════════
-function openManualModal() {
-  // Populate collaborators dropdown
-  const sel = document.getElementById('manualEmp');
-  sel.innerHTML = '<option value="">Selecciona un colaborador</option>';
-  const emps = COLLABS.filter(c => c.role !== 'admin');
-  emps.forEach(emp => {
-    const opt = document.createElement('option');
-    opt.value = emp.user;
-    opt.textContent = emp.name;
-    sel.appendChild(opt);
-  });
-  // Set default date to today
-  document.getElementById('manualDate').value = todayStr();
-  document.getElementById('manualTime').value = '';
-  selectManualType('entry');
-  document.getElementById('manualModal').classList.add('open');
-}
 
-function selectManualType(type) {
-  document.getElementById('manualType').value = type;
-  const entryBtn = document.getElementById('manualTypeEntry');
-  const exitBtn  = document.getElementById('manualTypeExit');
-  if (type === 'entry') {
-    entryBtn.style.border = '2px solid #1a1f2e';
-    entryBtn.style.background = 'rgba(26,31,46,0.08)';
-    entryBtn.style.color = '#1a1f2e';
-    exitBtn.style.border = '1px solid var(--border)';
-    exitBtn.style.background = 'transparent';
-    exitBtn.style.color = 'var(--muted)';
-  } else {
-    exitBtn.style.border = '2px solid #C41230';
-    exitBtn.style.background = 'rgba(196,18,48,0.08)';
-    exitBtn.style.color = '#C41230';
-    entryBtn.style.border = '1px solid var(--border)';
-    entryBtn.style.background = 'transparent';
-    entryBtn.style.color = 'var(--muted)';
-  }
-}
-
-async function saveManualRecord() {
-  const userId = document.getElementById('manualEmp').value;
-  const type   = document.getElementById('manualType').value;
-  const date   = document.getElementById('manualDate').value;
-  const time24 = document.getElementById('manualTime').value;
-
-  if (!userId || !date || !time24) { showToast('Completa todos los campos', 'error'); return; }
-
-  const emp = COLLABS.find(c => c.user === userId);
-  if (!emp) { showToast('Colaborador no encontrado', 'error'); return; }
-
-  const btn = document.getElementById('btnSaveManual');
-  btn.textContent = '⏳ Guardando…'; btn.disabled = true;
-
-  try {
-    // Format display time
-    const [h, m] = time24.split(':').map(Number);
-    const ampm = h >= 12 ? 'p.m.' : 'a.m.';
-    const h12 = h % 12 || 12;
-    const timeDisplay = `${String(h12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${ampm}`;
-
-    const rec = {
-      id: Date.now(),
-      userId, name: emp.name,
-      type, date, time: timeDisplay, time24,
-      timestamp: new Date(date + 'T' + time24).toISOString(),
-      manual: true, // Mark as manual
-      registeredBy: currentUser.name,
-      lat: CONFIG.lat, lng: CONFIG.lng, distance: 0
-    };
-
-    // Calculate late if entry
-    if (type === 'entry') {
-      const diff = timeToMinutes(time24) - timeToMinutes(CONFIG.startTime);
-      rec.late = diff > CONFIG.tolerance ? diff : 0;
-    }
-
-    // Calculate worked/extra if exit
-    if (type === 'exit') {
-      const dayRecords = RECORDS.filter(r => r.userId === userId && r.date === date);
-      const entryRec = dayRecords.find(r => r.type === 'entry');
-      if (entryRec) {
-        const rawEntryMins2 = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
-        const effectiveEntry = Math.max(rawEntryMins2, timeToMinutes(CONFIG.startTime));
-        const exitMins  = timeToMinutes(time24);
-        const lunchMin  = CONFIG.lunchMin || 60;
-        rec.workedMin   = Math.max(0, exitMins - effectiveEntry - lunchMin);
-        const endMins   = timeToMinutes(CONFIG.endTime);
-        const overMin   = exitMins - endMins;
-        rec.extraMin    = overMin >= 30 ? overMin : 0;
-      }
-    }
-
-    await setDoc(doc(db, 'records', String(rec.id)), rec);
-    document.getElementById('manualModal').classList.remove('open');
-    showToast(`✅ Registro manual guardado — ${emp.name}`, 'success');
-    renderAdmin();
-  } catch(e) {
-    showToast('⚠️ Error: ' + e.message, 'error');
-  } finally {
-    btn.textContent = 'Guardar registro'; btn.disabled = false;
-  }
-}
-
-function closeManualModal(e) {
-  if (e.target.id === 'manualModal') document.getElementById('manualModal').classList.remove('open');
-}
-
-// ════════════════════════════════
-//  NÓMINA SAIT
-// ════════════════════════════════
-let NOMINA_RECORDS = [];
-let NOMINA_EMPS = [];
-
-function setNomRange(type) {
-  const now = new Date();
-  let from, to;
-  document.querySelectorAll('#tab-nomina .range-btn').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
-  if (type === 'week') {
-    const day = now.getDay();
-    const daysSinceThursday = (day + 3) % 7;
-    const thu = new Date(now); thu.setDate(now.getDate() - daysSinceThursday);
-    from = dateToStr(thu);
-    to = dateToStr(now);
-  } else if (type === 'last') {
-    const day = now.getDay();
-    const daysSinceThursday = (day + 3) % 7;
-    const lastWed = new Date(now); lastWed.setDate(now.getDate() - daysSinceThursday - 1);
-    const lastThu = new Date(lastWed); lastThu.setDate(lastWed.getDate() - 6);
-    from = dateToStr(lastThu);
-    to = dateToStr(lastWed);
-  }
-  document.getElementById('nomFrom').value = from;
-  document.getElementById('nomTo').value = to;
-}
-
-async function loadNomina() {
-  const from = document.getElementById('nomFrom').value;
-  const to   = document.getElementById('nomTo').value;
-  if (!from || !to) { showToast('Selecciona el periodo', 'error'); return; }
-  showToast('Cargando incidencias…', '');
-  try {
-    const q = query(collection(db, 'records'), where('date', '>=', from), where('date', '<=', to));
-    const snap = await getDocs(q);
-    NOMINA_RECORDS = snap.docs.map(d => d.data());
-    NOMINA_EMPS = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin') : DEMO_USERS.filter(u => u.role === 'emp');
-    renderNomina(from, to);
-    document.getElementById('nominaContent').style.display = 'block';
-    showToast('✅ Incidencias cargadas', 'success');
-  } catch(e) { showToast('⚠️ Error: ' + e.message, 'error'); }
-}
-
-function renderNomina(from, to) {
-  const workDays = CONFIG.workDays || [1,2,3,4,5];
-  const dates = [];
-  let cur = new Date(from + 'T12:00:00');
-  const end = new Date(to + 'T12:00:00');
-  while (cur <= end) {
-    const d = dateToStr(cur);
-    if (workDays.includes(cur.getDay()) && !isHoliday(d)) dates.push(d);
-    cur.setDate(cur.getDate() + 1);
-  }
-
-  // Build incidences table
-  let tableHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
-    <thead>
-      <tr style="background:var(--surface2)">
-        <th style="padding:10px;text-align:left;border-bottom:1px solid var(--border)">Colaborador</th>
-        <th style="padding:10px;text-align:center;border-bottom:1px solid var(--border)">Días trab.</th>
-        <th style="padding:10px;text-align:center;border-bottom:1px solid var(--border)">Faltas</th>
-        <th style="padding:10px;text-align:center;border-bottom:1px solid var(--border)">Retardos</th>
-        <th style="padding:10px;text-align:center;border-bottom:1px solid var(--border)">H.Extra</th>
-      </tr>
-    </thead><tbody>`;
-
-  NOMINA_EMPS.forEach(emp => {
-    let worked=0, absent=0, late=0, extraMin=0;
-    dates.forEach(date => {
-      const recs = NOMINA_RECORDS.filter(r => r.userId === emp.user && r.date === date);
-      const entry = recs.find(r => r.type === 'entry');
-      const exit  = recs.find(r => r.type === 'exit');
-      if (!entry) absent++;
-      else { worked++; if (entry.late > 0) late++; if (exit?.extraMin) extraMin += exit.extraMin; }
-    });
-    const extraHrs = extraMin / 60;
-    tableHTML += `<tr>
-      <td style="padding:10px;border-bottom:1px solid var(--border);font-weight:500">${emp.name}</td>
-      <td style="padding:10px;text-align:center;border-bottom:1px solid var(--border);color:#2B4EAE;font-weight:600">${worked}</td>
-      <td style="padding:10px;text-align:center;border-bottom:1px solid var(--border);color:#C41230;font-weight:600">${absent}</td>
-      <td style="padding:10px;text-align:center;border-bottom:1px solid var(--border);color:#e8a020;font-weight:600">${late}</td>
-      <td style="padding:10px;text-align:center;border-bottom:1px solid var(--border);color:#6366f1;font-weight:600">${extraHrs.toFixed(2)}</td>
-    </tr>`;
-  });
-  tableHTML += '</tbody></table>';
-  document.getElementById('nominaTable').innerHTML = tableHTML;
-
-  // Build variables inputs per employee
-  const concepts = [
-    { id: 'bono',      label: 'Bono Productividad',  clave: 5,  tipo: 1 },
-    { id: 'prestNom',  label: 'Préstamo de Nómina',  clave: 8,  tipo: 1 },
-    { id: 'prestPers', label: 'Préstamo Personal',   clave: 55, tipo: 2 },
-    { id: 'infonavit', label: 'INFONAVIT',            clave: 56, tipo: 2 },
-    { id: 'otrasDed',  label: 'Otras Deducciones',   clave: 54, tipo: 2 },
-  ];
-
-  let varsHTML = NOMINA_EMPS.map(emp => `
-    <div class="config-card" style="margin-bottom:12px">
-      <div class="config-title" style="font-size:14px">👤 ${emp.name}</div>
-      ${concepts.map(c => `
-        <div class="config-row">
-          <div class="config-label" style="font-size:13px">${c.label}</div>
-          <input class="config-input" id="nom_${emp.user}_${c.id}" type="number" min="0" step="0.01" placeholder="0.00" style="width:120px">
-        </div>`).join('')}
-    </div>`).join('');
-
-  document.getElementById('nominaVariables').innerHTML = varsHTML;
-}
-
-async function exportSAIT() {
-  const from = document.getElementById('nomFrom').value;
-  const to   = document.getElementById('nomTo').value;
-  const workDays = CONFIG.workDays || [1,2,3,4,5];
-
-  const dates = [];
-  let cur = new Date(from + 'T12:00:00');
-  const end = new Date(to + 'T12:00:00');
-  while (cur <= end) {
-    const d = dateToStr(cur);
-    if (workDays.includes(cur.getDay()) && !isHoliday(d)) dates.push(d);
-    cur.setDate(cur.getDate() + 1);
-  }
-
-  const concepts = [
-    { id: 'bono',      clave: 5,   tipo: 1 },
-    { id: 'prestNom',  clave: 8,   tipo: 1 },
-    { id: 'prestPers', clave: 55,  tipo: 2 },
-    { id: 'infonavit', clave: 56,  tipo: 2 },
-    { id: 'otrasDed',  clave: 54,  tipo: 2 },
-  ];
-
-  // SAIT format: Col1=NumTrabajador, Col2=NumConcepto, Col3=TipoMovimiento, Col4=Cantidad
-  const rows = [['Num_Trabajador', 'Num_Concepto', 'Tipo_Movimiento', 'Cantidad']];
-
-  NOMINA_EMPS.forEach((emp, idx) => {
-    const numTrab = emp.saitNum || (idx + 1); // Use SAIT number if available
-    let worked=0, absent=0, extraMin=0;
-
-    dates.forEach(date => {
-      const recs = NOMINA_RECORDS.filter(r => r.userId === emp.user && r.date === date);
-      const entry = recs.find(r => r.type === 'entry');
-      const exit  = recs.find(r => r.type === 'exit');
-      if (entry) { worked++; if (exit?.extraMin) extraMin += exit.extraMin; }
-      else absent++;
-    });
-
-    const extraHrs = extraMin / 60;
-
-    // Días trabajados (concepto 130, tipo 1)
-    if (worked > 0) rows.push([numTrab, 130, 1, worked]);
-
-    // Horas extra dobles (concepto 612, tipo 1)
-    if (extraHrs > 0) rows.push([numTrab, 612, 1, extraHrs.toFixed(2)]);
-
-    // Conceptos variables
-    concepts.forEach(c => {
-      const val = parseFloat(document.getElementById(`nom_${emp.user}_${c.id}`)?.value || 0);
-      if (val > 0) rows.push([numTrab, c.clave, c.tipo, val]);
-    });
-  });
-
-  downloadCSV(rows, `SAIT_nomina_${from}_${to}.csv`);
-  showToast('📊 Archivo SAIT descargado', 'success');
-}
-
-// ════════════════════════════════
-//  COLLABORATOR MANAGEMENT
-// ════════════════════════════════
-let COLLABS = [];
-
-function selectRole(role) {
-  document.getElementById('collabRole').value = role;
-  const empBtn = document.getElementById('roleEmp');
-  const adminBtn = document.getElementById('roleAdmin');
-  if (role === 'emp') {
-    empBtn.style.border = '2px solid #C41230';
-    empBtn.style.background = 'rgba(196,18,48,0.1)';
-    empBtn.style.color = '#C41230';
-    adminBtn.style.border = '1px solid var(--border)';
-    adminBtn.style.background = 'transparent';
-    adminBtn.style.color = 'var(--muted)';
-  } else {
-    adminBtn.style.border = '2px solid #2B4EAE';
-    adminBtn.style.background = 'rgba(43,78,174,0.1)';
-    adminBtn.style.color = '#2B4EAE';
-    empBtn.style.border = '1px solid var(--border)';
-    empBtn.style.background = 'transparent';
-    empBtn.style.color = 'var(--muted)';
-  }
-}
-
-async function loadCollabs() {
-  const container = document.getElementById('collabList');
-  try {
-    const snap = await getDocs(collection(db, 'users'));
-    COLLABS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderCollabList();
-  } catch(e) {
-    console.error('loadCollabs error:', e);
-    if (container) container.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div>Error al cargar. Verifica tu conexión.</div>';
-  }
-}
-
-function renderCollabList() {
-  const container = document.getElementById('collabList');
-  if (!container) return;
-  if (!COLLABS.length) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div>Sin colaboradores aún. Agrega el primero.</div>';
-    return;
-  }
-  container.innerHTML = COLLABS.map(c => `
-    <div class="emp-row">
-      <div class="emp-avatar" style="background:${c.role==='admin'?'linear-gradient(135deg,#2B4EAE,#1a3a8a)':'linear-gradient(135deg,#C41230,#a00e25)'}">${c.name ? c.name[0].toUpperCase() : '?'}</div>
-      <div class="emp-info">
-        <div class="emp-name">${c.name}</div>
-        <div class="emp-detail">@${c.user} · <span style="color:${c.role==='admin'?'#2B4EAE':'#C41230'};font-weight:600">${c.role==='admin'?'Admin':'Empleado'}</span>${c.saitNum?' · SAIT #'+c.saitNum:' · <span style="color:#e8a020">Sin # SAIT</span>'}</div>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button onclick="window.editCollab('${c.id}')" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-size:12px;cursor:pointer">Editar</button>
-        <button onclick="window.deleteCollab('${c.id}','${c.name}')" style="background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:8px;padding:6px 12px;color:#C41230;font-size:12px;cursor:pointer">Eliminar</button>
-      </div>
-    </div>`).join('');
-}
-
-function showAddCollab() {
-  document.getElementById('collabModalTitle').textContent = 'Agregar colaborador';
-  document.getElementById('collabEditId').value = '';
-  document.getElementById('collabName').value = '';
-  document.getElementById('collabUser').value = '';
-  document.getElementById('collabPin').value = '';
-  document.getElementById('collabUser').disabled = false;
-  document.getElementById('collabSaitNum').value = '';
-  selectRole('emp');
-  document.getElementById('collabModal').classList.add('open');
-}
-
-function editCollab(id) {
-  const c = COLLABS.find(x => x.id === id);
-  if (!c) return;
-  document.getElementById('collabModalTitle').textContent = 'Editar colaborador';
-  document.getElementById('collabEditId').value = id;
-  document.getElementById('collabName').value = c.name || '';
-  document.getElementById('collabUser').value = c.user || '';
-  document.getElementById('collabPin').value = c.pin || '';
-  document.getElementById('collabUser').disabled = true;
-  document.getElementById('collabSaitNum').value = c.saitNum || '';
-  selectRole(c.role || 'emp');
-  document.getElementById('collabModal').classList.add('open');
-}
-
-async function saveCollab() {
-  const btn = document.getElementById('btnSaveCollab');
-  const name = document.getElementById('collabName').value.trim();
-  const user = document.getElementById('collabUser').value.trim().toLowerCase();
-  const pin  = document.getElementById('collabPin').value.trim();
-  const editId = document.getElementById('collabEditId').value;
-
-  if (!name || !user || !pin) { showToast('Completa todos los campos', 'error'); return; }
-  if (pin.length < 4) { showToast('El PIN debe tener al menos 4 dígitos', 'error'); return; }
-  if (!editId && COLLABS.find(c => c.user === user)) { showToast('Ese usuario ya existe', 'error'); return; }
-
-  btn.textContent = '⏳ Guardando…'; btn.disabled = true;
-  try {
-    const docId = editId || user;
-    const role = document.getElementById('collabRole').value || 'emp';
-    const saitNum = parseInt(document.getElementById('collabSaitNum').value) || null;
-    const hashedPinSave = await hashPin(pin);
-    const data = { name, user, pin: hashedPinSave, role, saitNum, createdAt: new Date().toISOString() };
-    await setDoc(doc(db, 'users', docId), data);
-    document.getElementById('collabModal').classList.remove('open');
-    await loadCollabs();
-    showToast(editId ? '✅ Colaborador actualizado' : '✅ Colaborador agregado', 'success');
-  } catch(e) {
-    showToast('⚠️ Error al guardar: ' + e.message, 'error');
-  } finally {
-    btn.textContent = 'Guardar'; btn.disabled = false;
-  }
-}
-
-async function deleteCollab(id, name) {
-  if (!confirm(`¿Eliminar a ${name}? Esta acción no se puede deshacer.`)) return;
-  try {
-    const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-    await deleteDoc(doc(db, 'users', id));
-    await loadCollabs();
-    showToast('✅ Colaborador eliminado', 'success');
-  } catch(e) {
-    showToast('⚠️ Error al eliminar', 'error');
-  }
-}
-
-function closeCollabModal(e) {
-  if (e.target.id === 'collabModal') document.getElementById('collabModal').classList.remove('open');
-}
-
-// ════════════════════════════════
-//  EXPOSE TO WINDOW (required for type="module")
-// ════════════════════════════════
-window.doLogin = doLogin;
-window.logout = logout;
-window.registerCheck = registerCheck;
-window.switchTab = switchTab;
-window.saveConfig = saveConfig;
-window.toggleDay = toggleDay;
-window.addHoliday = addHoliday;
-window.removeHoliday = removeHoliday;
-window.useMyLocation = useMyLocation;
-window.exportCSV = exportCSV;
-window.exportSummaryCSV = exportSummaryCSV;
-window.setRange = setRange;
-window.generateReport = generateReport;
-window.exportRangeCSV = exportRangeCSV;
-window.exportIncidencesCSV = exportIncidencesCSV;
-window.showEmpDetail = showEmpDetail;
-window.closeModal = closeModal;
-window.showAddCollab = showAddCollab;
-window.openManualModal = openManualModal;
-window.selectManualType = selectManualType;
-window.saveManualRecord = saveManualRecord;
-window.closeManualModal = closeManualModal;
-window.setNomRange = setNomRange;
-window.loadNomina = loadNomina;
-window.exportSAIT = exportSAIT;
-window.selectRole = selectRole;
-window.editCollab = editCollab;
-window.saveCollab = saveCollab;
-window.deleteCollab = deleteCollab;
-window.closeCollabModal = closeCollabModal;
-
-</script>
-</body>
-</html>
