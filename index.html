@@ -1666,9 +1666,8 @@ function exportRangeCSV() {
   downloadCSV(rows, `registros_${from}_${to}.csv`);
 }
 
-async function exportIncidencesCSV() {
+function exportIncidencesCSV() {
   if (!REPORT_RECORDS.length) { showToast('Genera un reporte primero', 'warn'); return; }
-  if (!COLLABS.length) await loadCollabs();
   const emps = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin') : DEMO_USERS.filter(u => u.role === 'emp');
   const from = document.getElementById('rptFrom').value;
   const to   = document.getElementById('rptTo').value;
