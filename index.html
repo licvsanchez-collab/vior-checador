@@ -1212,15 +1212,18 @@ function renderAdmin() {
     ? empGroupsHTML
     : '<div class="empty-state"><div class="empty-icon">📭</div>Sin registros hoy</div>';
 
-  // History tab
-  document.getElementById('historyList').innerHTML = RECORDS.slice().reverse().slice(0,20).map(r =>
-    `<div class="log-entry">
-      <div>
-        <div class="log-type ${r.type}">${r.type==='entry'?'🟢':'🔴'} ${r.name}</div>
-        <div class="log-loc">${r.date} · 📍${r.distance}m</div>
-      </div>
-      <div class="log-time">${r.time}</div>
-    </div>`).join('') || '<div class="empty-state"><div class="empty-icon">📭</div>Sin historial</div>';
+  // History tab (optional - only update if element exists)
+  const histEl = document.getElementById('historyList');
+  if (histEl) {
+    histEl.innerHTML = RECORDS.slice().reverse().slice(0,20).map(r =>
+      `<div class="log-entry">
+        <div>
+          <div class="log-type ${r.type}">${r.type==='entry'?'🟢':'🔴'} ${r.name}</div>
+          <div class="log-loc">${r.date} · 📍${r.distance}m</div>
+        </div>
+        <div class="log-time">${r.time}</div>
+      </div>`).join('') || '<div class="empty-state"><div class="empty-icon">📭</div>Sin historial</div>';
+  }
 }
 
 function showEmpDetail(userId) {
