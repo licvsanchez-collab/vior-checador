@@ -2012,8 +2012,7 @@ async function exportSAIT() {
     cur.setDate(cur.getDate() + 1);
   }
 
-  // No headers - SAIT format: NumEmpleado | ClaveConcepto | Cantidad | TipoMov
-  const rows = [];
+  const rows = []; // No headers
 
   NOMINA_EMPS.forEach((emp) => {
     const numTrab = emp.saitNum || 0;
@@ -4095,7 +4094,7 @@ async function exportSAIT() {
     if (extraMin > 0) rows.push([numTrab, 612, 1, (extraMin/60).toFixed(2)]);
     concepts.forEach(c => {
       const val = parseFloat(document.getElementById(`nom_${emp.user}_${c.id}`)?.value || 0);
-      if (val > 0) rows.push([numTrab, c.clave, c.tipo, val]);
+      if (val > 0) rows.push([numTrab, c.clave, val, 'S']);
     });
   });
   downloadCSV(rows, `SAIT_nomina_${from}_${to}.csv`);
