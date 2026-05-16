@@ -1177,7 +1177,7 @@ function renderAdmin() {
   document.getElementById('statAbsent').textContent = absent;
   document.getElementById('statLate').textContent = late;
   document.getElementById('statExtra').textContent = (extraMin/60).toFixed(1) + 'h';
-  document.getElementById('teamList').innerHTML = teamHTML || '<div class="empty-state"><div class="empty-icon">📭</div>Sin registros hoy</div>';
+  const teamEl = document.getElementById('teamList'); if(teamEl) teamEl.innerHTML = teamHTML || '<div class="empty-state"><div class="empty-icon">📭</div>Sin registros hoy</div>';
 
   // Empleados tab - group by collaborator
   const empGroups = {};
@@ -1208,9 +1208,7 @@ function renderAdmin() {
       ${(g.entry?.manual || g.exit?.manual) ? '<div style="font-size:11px;color:#e8a020;margin-top:4px">✏️ Contiene registro manual</div>' : ''}
       </div>
     </div>`).join('');
-  document.getElementById('empLogList').innerHTML = Object.keys(empGroups).length
-    ? empGroupsHTML
-    : '<div class="empty-state"><div class="empty-icon">📭</div>Sin registros hoy</div>';
+  const empLogEl = document.getElementById('empLogList'); if(empLogEl) empLogEl.innerHTML = Object.keys(empGroups).length ? empGroupsHTML : '<div class="empty-state"><div class="empty-icon">📭</div>Sin registros hoy</div>';
 
   // History tab (optional - only update if element exists)
   const histEl = document.getElementById('historyList');
