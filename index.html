@@ -1524,6 +1524,9 @@ async function generateReport() {
 
   showToast('Generando reporte…', '');
   try {
+    // Load collabs if not yet loaded
+    if (!COLLABS.length) await loadCollabs();
+    
     const q = query(collection(db, 'records'),
       where('date', '>=', from),
       where('date', '<=', to)
