@@ -1426,10 +1426,15 @@ function exportSummaryCSV() {
 }
 
 function downloadCSV(rows, filename) {
-  const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const csv = '\uFEFF' + rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
-  a.download = filename; a.click();
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
   showToast('📊 Descargando…', 'success');
 }
 
@@ -1622,24 +1627,23 @@ function renderReportDashboard(from, to) {
       const g = grouped[key];
       const header = g.name !== lastUser ? `<div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:#1a1f2e;margin:16px 0 8px;padding-bottom:4px;border-bottom:2px solid #C41230">${g.name}</div>` : '';
       lastUser = g.name;
-      return header + `<div class="log-entry" style="margin-bottom:6px">
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:500;color:var(--muted)">${g.date}</div>
+      return header + `<div style="display:grid;grid-template-columns:120px 1fr 1fr 1fr 1fr;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="font-size:13px;color:var(--muted)">${g.date}</div>
+        <div style="text-align:center">
+          <div style="font-size:11px;color:var(--muted)">Entrada</div>
+          <div style="font-weight:700;color:#1a1f2e;font-size:13px">${g.entry?.time || '—'}</div>
         </div>
-        <div style="display:flex;gap:16px;align-items:center">
-          <div style="text-align:center">
-            <div style="font-size:11px;color:var(--muted)">Entrada</div>
-            <div style="font-weight:700;color:#1a1f2e">${g.entry?.time || '—'}</div>
-          </div>
-          <div style="text-align:center">
-            <div style="font-size:11px;color:var(--muted)">Salida</div>
-            <div style="font-weight:700;color:#C41230">${g.exit?.time || '—'}</div>
-          </div>
-          <div style="text-align:center">
-            <div style="font-size:11px;color:var(--muted)">Trabajado</div>
-            <div style="font-weight:700;color:#2B4EAE">${g.exit?.workedMin ? fmtMin(g.exit.workedMin) : '—'}</div>
-          </div>
-          ${g.exit?.extraMin > 0 ? `<div style="text-align:center"><div style="font-size:11px;color:var(--muted)">Extra</div><div style="font-weight:700;color:#6366f1">${fmtMin(g.exit.extraMin)}</div></div>` : ''}
+        <div style="text-align:center">
+          <div style="font-size:11px;color:var(--muted)">Salida</div>
+          <div style="font-weight:700;color:#C41230;font-size:13px">${g.exit?.time || '—'}</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:11px;color:var(--muted)">Trabajado</div>
+          <div style="font-weight:700;color:#2B4EAE;font-size:13px">${g.exit?.workedMin ? fmtMin(g.exit.workedMin) : '—'}</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:11px;color:var(--muted)">Extra</div>
+          <div style="font-weight:700;color:#6366f1;font-size:13px">${g.exit?.extraMin > 0 ? fmtMin(g.exit.extraMin) : '—'}</div>
         </div>
       </div>`;
     }).join('');
