@@ -15,6 +15,7 @@
 <link rel="manifest" href="./manifest.json">
 <title>Vior Steel — Checador</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <style>
   :root {
     --bg: #f4f5f7;
@@ -725,6 +726,42 @@
   </div>
 </div>
 
+<!-- Enroller Screen -->
+<div id="enrollerScreen" class="screen">
+  <div class="topbar" style="background:#1a1f2e;padding:20px 24px">
+    <div>
+      <div class="topbar-name" style="color:#fff">Registro Facial</div>
+      <div class="topbar-role" style="color:rgba(255,255,255,0.6)">Enrolador</div>
+    </div>
+    <button class="logout-btn" onclick="logout()" style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#fff">Salir</button>
+  </div>
+
+  <div style="padding:24px">
+    <div class="config-card">
+      <div class="config-title">👤 Selecciona colaborador</div>
+      <select class="field-input" id="enrollEmp" style="background:var(--surface2);cursor:pointer;margin-bottom:0">
+        <option value="">Selecciona...</option>
+      </select>
+    </div>
+
+    <div class="config-card" style="margin-top:16px">
+      <div class="config-title">📷 Cámara</div>
+      <div style="position:relative;width:100%;max-width:400px;margin:0 auto">
+        <video id="enrollVideo" autoplay muted playsinline style="width:100%;border-radius:12px;background:#000;display:block"></video>
+        <canvas id="enrollCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;border-radius:12px"></canvas>
+        <div id="enrollOverlay" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:200px;height:200px;border:3px solid #C41230;border-radius:50%;pointer-events:none"></div>
+      </div>
+      <div id="enrollStatus" style="text-align:center;margin-top:12px;font-size:14px;color:var(--muted)">Selecciona un colaborador para comenzar</div>
+    </div>
+
+    <button class="save-btn" id="btnCapture" onclick="window.captureFace()" style="margin-top:16px;opacity:0.5;pointer-events:none">
+      📸 Capturar rostro
+    </button>
+
+    <div id="enrolledList" style="margin-top:24px"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -768,6 +805,7 @@ const appCheck = initializeAppCheck(fbApp, {
 // ════════════════════════════════
 const DEMO_USERS = [
   { user: 'admin', pin: '0000', name: 'Administrador', role: 'admin' },
+  { user: 'enroller', pin: '9999', name: 'Enrolador', role: 'enroller' },
 ];
 
 const DEFAULT_HOLIDAYS = [
@@ -892,7 +930,8 @@ async function doLogin() {
     await loadConfigFromDB();
     await loadRecordsFromDB();
     startRealtimeListener();
-    showAdmin();
+    if (adminMatch.role === 'enroller') showEnroller();
+    else showAdmin();
     return;
   }
 
@@ -917,6 +956,7 @@ async function doLogin() {
       await loadRecordsFromDB();
       startRealtimeListener();
       if (data.role === 'admin') showAdmin();
+      else if (data.role === 'enroller') showEnroller();
       else showEmployee();
       return;
     }
@@ -1477,6 +1517,155 @@ function showToast(msg, type='') {
   toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
 }
 
+// ════════════════════════════════
+//  FACE RECOGNITION
+// ════════════════════════════════
+let faceModelsLoaded = false;
+let enrollStream = null;
+
+async function loadFaceModels() {
+  if (faceModelsLoaded) return;
+  showToast('Cargando modelos de reconocimiento…', '');
+  try {
+    const MODEL_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights';
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+    ]);
+    faceModelsLoaded = true;
+    showToast('✅ Modelos cargados', 'success');
+  } catch(e) {
+    showToast('⚠️ Error cargando modelos: ' + e.message, 'error');
+  }
+}
+
+async function showEnroller() {
+  show('enrollerScreen');
+  await loadFaceModels();
+  await loadCollabs();
+  // Populate dropdown
+  const sel = document.getElementById('enrollEmp');
+  sel.innerHTML = '<option value="">Selecciona...</option>';
+  COLLABS.filter(c => c.role !== 'admin').forEach(emp => {
+    const opt = document.createElement('option');
+    opt.value = emp.user; opt.textContent = emp.name;
+    sel.appendChild(opt);
+  });
+  sel.addEventListener('change', onEnrollEmpChange);
+  renderEnrolledList();
+}
+
+async function onEnrollEmpChange() {
+  const userId = document.getElementById('enrollEmp').value;
+  const btn = document.getElementById('btnCapture');
+  if (!userId) {
+    btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none';
+    stopEnrollCamera();
+    return;
+  }
+  btn.style.opacity = '1'; btn.style.pointerEvents = 'auto';
+  await startEnrollCamera();
+}
+
+async function startEnrollCamera() {
+  stopEnrollCamera();
+  try {
+    enrollStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 400, height: 400 } });
+    const video = document.getElementById('enrollVideo');
+    video.srcObject = enrollStream;
+    document.getElementById('enrollStatus').textContent = 'Coloca el rostro dentro del círculo';
+    document.getElementById('enrollStatus').style.color = '#2B4EAE';
+  } catch(e) {
+    showToast('⚠️ No se pudo acceder a la cámara', 'error');
+  }
+}
+
+function stopEnrollCamera() {
+  if (enrollStream) {
+    enrollStream.getTracks().forEach(t => t.stop());
+    enrollStream = null;
+  }
+}
+
+async function captureFace() {
+  const userId = document.getElementById('enrollEmp').value;
+  if (!userId) { showToast('Selecciona un colaborador', 'error'); return; }
+  const emp = COLLABS.find(c => c.user === userId);
+  if (!emp) return;
+
+  const video = document.getElementById('enrollVideo');
+  document.getElementById('enrollStatus').textContent = 'Analizando rostro…';
+
+  try {
+    const detection = await faceapi
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks(true)
+      .withFaceDescriptor();
+
+    if (!detection) {
+      document.getElementById('enrollStatus').textContent = '❌ No se detectó rostro. Intenta de nuevo.';
+      document.getElementById('enrollStatus').style.color = '#C41230';
+      return;
+    }
+
+    // Save descriptor to Firebase
+    const descriptor = Array.from(detection.descriptor);
+    await setDoc(doc(db, 'faces', userId), {
+      userId, name: emp.name,
+      descriptor,
+      enrolledAt: new Date().toISOString(),
+      enrolledBy: currentUser.name
+    });
+
+    document.getElementById('enrollStatus').textContent = `✅ Rostro de ${emp.name} registrado exitosamente`;
+    document.getElementById('enrollStatus').style.color = '#2B4EAE';
+    showToast(`✅ ${emp.name} registrado`, 'success');
+    renderEnrolledList();
+    // Reset
+    document.getElementById('enrollEmp').value = '';
+    stopEnrollCamera();
+    setTimeout(() => {
+      document.getElementById('enrollStatus').textContent = 'Selecciona un colaborador para comenzar';
+      document.getElementById('enrollStatus').style.color = 'var(--muted)';
+    }, 3000);
+  } catch(e) {
+    showToast('⚠️ Error: ' + e.message, 'error');
+  }
+}
+
+async function renderEnrolledList() {
+  try {
+    const snap = await getDocs(collection(db, 'faces'));
+    const faces = snap.docs.map(d => d.data());
+    const container = document.getElementById('enrolledList');
+    if (!container) return;
+    if (!faces.length) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-icon">👤</div>Sin rostros registrados aún</div>';
+      return;
+    }
+    container.innerHTML = `<div class="section-title">Rostros registrados (${faces.length})</div>` +
+      faces.map(f => `<div class="emp-row">
+        <div class="emp-avatar" style="background:linear-gradient(135deg,#2B4EAE,#1a3a8a)">✓</div>
+        <div class="emp-info">
+          <div class="emp-name">${f.name}</div>
+          <div class="emp-detail">Registrado por ${f.enrolledBy} · ${f.enrolledAt?.split('T')[0]}</div>
+        </div>
+        <button onclick="window.deleteFace('${f.userId}')" style="background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:8px;padding:6px 12px;color:#C41230;font-size:12px;cursor:pointer">Eliminar</button>
+      </div>`).join('');
+  } catch(e) { console.log('renderEnrolledList error', e); }
+}
+
+async function deleteFace(userId) {
+  if (!confirm('¿Eliminar el rostro registrado?')) return;
+  try {
+    const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    await deleteDoc(doc(db, 'faces', userId));
+    showToast('✅ Rostro eliminado', 'success');
+    renderEnrolledList();
+  } catch(e) { showToast('⚠️ Error al eliminar', 'error'); }
+}
+
 // Enter key en login
 document.getElementById('loginPin').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 
@@ -1701,6 +1890,155 @@ function exportIncidencesCSV() {
   });
 
   downloadCSV(rows, `incidencias_${from}_${to}.csv`);
+}
+
+// ════════════════════════════════
+//  FACE RECOGNITION
+// ════════════════════════════════
+let faceModelsLoaded = false;
+let enrollStream = null;
+
+async function loadFaceModels() {
+  if (faceModelsLoaded) return;
+  showToast('Cargando modelos de reconocimiento…', '');
+  try {
+    const MODEL_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights';
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+    ]);
+    faceModelsLoaded = true;
+    showToast('✅ Modelos cargados', 'success');
+  } catch(e) {
+    showToast('⚠️ Error cargando modelos: ' + e.message, 'error');
+  }
+}
+
+async function showEnroller() {
+  show('enrollerScreen');
+  await loadFaceModels();
+  await loadCollabs();
+  // Populate dropdown
+  const sel = document.getElementById('enrollEmp');
+  sel.innerHTML = '<option value="">Selecciona...</option>';
+  COLLABS.filter(c => c.role !== 'admin').forEach(emp => {
+    const opt = document.createElement('option');
+    opt.value = emp.user; opt.textContent = emp.name;
+    sel.appendChild(opt);
+  });
+  sel.addEventListener('change', onEnrollEmpChange);
+  renderEnrolledList();
+}
+
+async function onEnrollEmpChange() {
+  const userId = document.getElementById('enrollEmp').value;
+  const btn = document.getElementById('btnCapture');
+  if (!userId) {
+    btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none';
+    stopEnrollCamera();
+    return;
+  }
+  btn.style.opacity = '1'; btn.style.pointerEvents = 'auto';
+  await startEnrollCamera();
+}
+
+async function startEnrollCamera() {
+  stopEnrollCamera();
+  try {
+    enrollStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 400, height: 400 } });
+    const video = document.getElementById('enrollVideo');
+    video.srcObject = enrollStream;
+    document.getElementById('enrollStatus').textContent = 'Coloca el rostro dentro del círculo';
+    document.getElementById('enrollStatus').style.color = '#2B4EAE';
+  } catch(e) {
+    showToast('⚠️ No se pudo acceder a la cámara', 'error');
+  }
+}
+
+function stopEnrollCamera() {
+  if (enrollStream) {
+    enrollStream.getTracks().forEach(t => t.stop());
+    enrollStream = null;
+  }
+}
+
+async function captureFace() {
+  const userId = document.getElementById('enrollEmp').value;
+  if (!userId) { showToast('Selecciona un colaborador', 'error'); return; }
+  const emp = COLLABS.find(c => c.user === userId);
+  if (!emp) return;
+
+  const video = document.getElementById('enrollVideo');
+  document.getElementById('enrollStatus').textContent = 'Analizando rostro…';
+
+  try {
+    const detection = await faceapi
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks(true)
+      .withFaceDescriptor();
+
+    if (!detection) {
+      document.getElementById('enrollStatus').textContent = '❌ No se detectó rostro. Intenta de nuevo.';
+      document.getElementById('enrollStatus').style.color = '#C41230';
+      return;
+    }
+
+    // Save descriptor to Firebase
+    const descriptor = Array.from(detection.descriptor);
+    await setDoc(doc(db, 'faces', userId), {
+      userId, name: emp.name,
+      descriptor,
+      enrolledAt: new Date().toISOString(),
+      enrolledBy: currentUser.name
+    });
+
+    document.getElementById('enrollStatus').textContent = `✅ Rostro de ${emp.name} registrado exitosamente`;
+    document.getElementById('enrollStatus').style.color = '#2B4EAE';
+    showToast(`✅ ${emp.name} registrado`, 'success');
+    renderEnrolledList();
+    // Reset
+    document.getElementById('enrollEmp').value = '';
+    stopEnrollCamera();
+    setTimeout(() => {
+      document.getElementById('enrollStatus').textContent = 'Selecciona un colaborador para comenzar';
+      document.getElementById('enrollStatus').style.color = 'var(--muted)';
+    }, 3000);
+  } catch(e) {
+    showToast('⚠️ Error: ' + e.message, 'error');
+  }
+}
+
+async function renderEnrolledList() {
+  try {
+    const snap = await getDocs(collection(db, 'faces'));
+    const faces = snap.docs.map(d => d.data());
+    const container = document.getElementById('enrolledList');
+    if (!container) return;
+    if (!faces.length) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-icon">👤</div>Sin rostros registrados aún</div>';
+      return;
+    }
+    container.innerHTML = `<div class="section-title">Rostros registrados (${faces.length})</div>` +
+      faces.map(f => `<div class="emp-row">
+        <div class="emp-avatar" style="background:linear-gradient(135deg,#2B4EAE,#1a3a8a)">✓</div>
+        <div class="emp-info">
+          <div class="emp-name">${f.name}</div>
+          <div class="emp-detail">Registrado por ${f.enrolledBy} · ${f.enrolledAt?.split('T')[0]}</div>
+        </div>
+        <button onclick="window.deleteFace('${f.userId}')" style="background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:8px;padding:6px 12px;color:#C41230;font-size:12px;cursor:pointer">Eliminar</button>
+      </div>`).join('');
+  } catch(e) { console.log('renderEnrolledList error', e); }
+}
+
+async function deleteFace(userId) {
+  if (!confirm('¿Eliminar el rostro registrado?')) return;
+  try {
+    const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    await deleteDoc(doc(db, 'faces', userId));
+    showToast('✅ Rostro eliminado', 'success');
+    renderEnrolledList();
+  } catch(e) { showToast('⚠️ Error al eliminar', 'error'); }
 }
 
 // Enter key en login
@@ -2076,6 +2414,155 @@ async function exportSAIT() {
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+// ════════════════════════════════
+//  FACE RECOGNITION
+// ════════════════════════════════
+let faceModelsLoaded = false;
+let enrollStream = null;
+
+async function loadFaceModels() {
+  if (faceModelsLoaded) return;
+  showToast('Cargando modelos de reconocimiento…', '');
+  try {
+    const MODEL_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights';
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+    ]);
+    faceModelsLoaded = true;
+    showToast('✅ Modelos cargados', 'success');
+  } catch(e) {
+    showToast('⚠️ Error cargando modelos: ' + e.message, 'error');
+  }
+}
+
+async function showEnroller() {
+  show('enrollerScreen');
+  await loadFaceModels();
+  await loadCollabs();
+  // Populate dropdown
+  const sel = document.getElementById('enrollEmp');
+  sel.innerHTML = '<option value="">Selecciona...</option>';
+  COLLABS.filter(c => c.role !== 'admin').forEach(emp => {
+    const opt = document.createElement('option');
+    opt.value = emp.user; opt.textContent = emp.name;
+    sel.appendChild(opt);
+  });
+  sel.addEventListener('change', onEnrollEmpChange);
+  renderEnrolledList();
+}
+
+async function onEnrollEmpChange() {
+  const userId = document.getElementById('enrollEmp').value;
+  const btn = document.getElementById('btnCapture');
+  if (!userId) {
+    btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none';
+    stopEnrollCamera();
+    return;
+  }
+  btn.style.opacity = '1'; btn.style.pointerEvents = 'auto';
+  await startEnrollCamera();
+}
+
+async function startEnrollCamera() {
+  stopEnrollCamera();
+  try {
+    enrollStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 400, height: 400 } });
+    const video = document.getElementById('enrollVideo');
+    video.srcObject = enrollStream;
+    document.getElementById('enrollStatus').textContent = 'Coloca el rostro dentro del círculo';
+    document.getElementById('enrollStatus').style.color = '#2B4EAE';
+  } catch(e) {
+    showToast('⚠️ No se pudo acceder a la cámara', 'error');
+  }
+}
+
+function stopEnrollCamera() {
+  if (enrollStream) {
+    enrollStream.getTracks().forEach(t => t.stop());
+    enrollStream = null;
+  }
+}
+
+async function captureFace() {
+  const userId = document.getElementById('enrollEmp').value;
+  if (!userId) { showToast('Selecciona un colaborador', 'error'); return; }
+  const emp = COLLABS.find(c => c.user === userId);
+  if (!emp) return;
+
+  const video = document.getElementById('enrollVideo');
+  document.getElementById('enrollStatus').textContent = 'Analizando rostro…';
+
+  try {
+    const detection = await faceapi
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks(true)
+      .withFaceDescriptor();
+
+    if (!detection) {
+      document.getElementById('enrollStatus').textContent = '❌ No se detectó rostro. Intenta de nuevo.';
+      document.getElementById('enrollStatus').style.color = '#C41230';
+      return;
+    }
+
+    // Save descriptor to Firebase
+    const descriptor = Array.from(detection.descriptor);
+    await setDoc(doc(db, 'faces', userId), {
+      userId, name: emp.name,
+      descriptor,
+      enrolledAt: new Date().toISOString(),
+      enrolledBy: currentUser.name
+    });
+
+    document.getElementById('enrollStatus').textContent = `✅ Rostro de ${emp.name} registrado exitosamente`;
+    document.getElementById('enrollStatus').style.color = '#2B4EAE';
+    showToast(`✅ ${emp.name} registrado`, 'success');
+    renderEnrolledList();
+    // Reset
+    document.getElementById('enrollEmp').value = '';
+    stopEnrollCamera();
+    setTimeout(() => {
+      document.getElementById('enrollStatus').textContent = 'Selecciona un colaborador para comenzar';
+      document.getElementById('enrollStatus').style.color = 'var(--muted)';
+    }, 3000);
+  } catch(e) {
+    showToast('⚠️ Error: ' + e.message, 'error');
+  }
+}
+
+async function renderEnrolledList() {
+  try {
+    const snap = await getDocs(collection(db, 'faces'));
+    const faces = snap.docs.map(d => d.data());
+    const container = document.getElementById('enrolledList');
+    if (!container) return;
+    if (!faces.length) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-icon">👤</div>Sin rostros registrados aún</div>';
+      return;
+    }
+    container.innerHTML = `<div class="section-title">Rostros registrados (${faces.length})</div>` +
+      faces.map(f => `<div class="emp-row">
+        <div class="emp-avatar" style="background:linear-gradient(135deg,#2B4EAE,#1a3a8a)">✓</div>
+        <div class="emp-info">
+          <div class="emp-name">${f.name}</div>
+          <div class="emp-detail">Registrado por ${f.enrolledBy} · ${f.enrolledAt?.split('T')[0]}</div>
+        </div>
+        <button onclick="window.deleteFace('${f.userId}')" style="background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:8px;padding:6px 12px;color:#C41230;font-size:12px;cursor:pointer">Eliminar</button>
+      </div>`).join('');
+  } catch(e) { console.log('renderEnrolledList error', e); }
+}
+
+async function deleteFace(userId) {
+  if (!confirm('¿Eliminar el rostro registrado?')) return;
+  try {
+    const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    await deleteDoc(doc(db, 'faces', userId));
+    showToast('✅ Rostro eliminado', 'success');
+    renderEnrolledList();
+  } catch(e) { showToast('⚠️ Error al eliminar', 'error'); }
+}
+
 // Enter key en login
 // ════════════════════════════════
 //  EXPOSE TO WINDOW (required for type="module")
@@ -2110,6 +2597,8 @@ window.saveManualRecord = saveManualRecord;
 window.closeManualModal = closeManualModal;
 window.showEmpDetail = showEmpDetail;
 window.closeModal = closeModal;
+window.captureFace = captureFace;
+window.deleteFace = deleteFace;
 </script>
 </body>
 </html>
