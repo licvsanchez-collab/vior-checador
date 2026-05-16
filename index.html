@@ -1695,4 +1695,42 @@ function exportIncidencesCSV() {
   downloadCSV(rows, `incidencias_${from}_${to}.csv`);
 }
 
+// Enter key en login
+document.getElementById('loginPin').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 
+// ════════════════════════════════
+//  EXPOSE TO WINDOW (required for type="module")
+// ════════════════════════════════
+window.doLogin = doLogin;
+window.logout = logout;
+window.registerCheck = registerCheck;
+window.switchTab = switchTab;
+window.saveConfig = saveConfig;
+window.useMyLocation = useMyLocation;
+window.exportCSV = exportCSV;
+window.exportSummaryCSV = exportSummaryCSV;
+window.setRange = setRange;
+window.generateReport = generateReport;
+window.exportRangeCSV = exportRangeCSV;
+window.exportIncidencesCSV = exportIncidencesCSV;
+window.toggleDay = toggleDay;
+window.addHoliday = addHoliday;
+window.removeHoliday = removeHoliday;
+window.showAddCollab = showAddCollab;
+window.selectRole = selectRole;
+window.editCollab = editCollab;
+window.saveCollab = saveCollab;
+window.deleteCollab = deleteCollab;
+window.closeCollabModal = closeCollabModal;
+window.setNomRange = setNomRange;
+window.loadNomina = loadNomina;
+window.exportSAIT = exportSAIT;
+window.openManualModal = openManualModal;
+window.selectManualType = selectManualType;
+window.saveManualRecord = saveManualRecord;
+window.closeManualModal = closeManualModal;
+window.showEmpDetail = showEmpDetail;
+window.closeModal = closeModal;
+</script>
+</body>
+</html>
