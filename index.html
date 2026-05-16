@@ -2026,10 +2026,22 @@ async function exportSAIT() {
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
       if (entry) {
-        workedDays++;
+        // Check if it's a regular workday (Mon-Fri) or weekend
+        const dow = new Date(date + 'T12:00:00').getDay();
+        const workDaysList = CONFIG.workDays || [1,2,3,4,5];
+        if (workDaysList.includes(dow)) {
+          workedDays++; // Only count regular workdays (max 5)
+        }
+        // Weekend/extra day hours count entirely as extras
         if (exit?.extraMin) totalExtraMin += exit.extraMin;
+        // If weekend, add all worked hours as extra
+        if (!workDaysList.includes(dow) && exit?.workedMin) {
+          totalExtraMin += exit.workedMin;
+        }
       }
     });
+    // Cap at 5 days max
+    workedDays = Math.min(workedDays, 5);
 
     const totalExtraHrs = totalExtraMin / 60;
 
