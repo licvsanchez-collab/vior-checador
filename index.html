@@ -971,6 +971,7 @@ async function doLogin() {
 
 function logout() {
   if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+  stopEnrollCamera(); // Stop camera if enroller was active
   currentUser = null; userGeo = null; geoOk = false;
   RECORDS = [];
   show('loginScreen');
