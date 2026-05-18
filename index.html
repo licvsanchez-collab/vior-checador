@@ -1537,25 +1537,34 @@ async function loadCollabs() {
   }
 }
 
-function renderCollabList() {
+async function renderCollabList() {
   const container = document.getElementById('collabList');
   if (!container) return;
   if (!COLLABS.length) {
     container.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div>Sin colaboradores aún. Agrega el primero.</div>';
     return;
   }
-  container.innerHTML = COLLABS.map(c => `
-    <div class="emp-row">
+  // Load face registrations to show status
+  let faceIds = [];
+  try {
+    const faceSnap = await getDocs(collection(db, 'faces'));
+    faceIds = faceSnap.docs.map(d => d.id);
+  } catch(e) {}
+
+  container.innerHTML = COLLABS.map(c => {
+    const hasFace = faceIds.includes(c.user);
+    return `<div class="emp-row">
       <div class="emp-avatar" style="background:${c.role==='admin'?'linear-gradient(135deg,#2B4EAE,#1a3a8a)':'linear-gradient(135deg,#C41230,#a00e25)'}">${c.name ? c.name[0].toUpperCase() : '?'}</div>
       <div class="emp-info">
         <div class="emp-name">${c.name}</div>
-        <div class="emp-detail">@${c.user} · <span style="color:${c.role==='admin'?'#2B4EAE':'#C41230'};font-weight:600">${c.role==='admin'?'Admin':c.role==='enroller'?'Enrolador':'Empleado'}</span>${c.saitNum?' · SAIT #'+c.saitNum:' · <span style="color:#e8a020">Sin # SAIT</span>'}</div>
+        <div class="emp-detail">@${c.user} · <span style="color:${c.role==='admin'?'#2B4EAE':'#C41230'};font-weight:600">${c.role==='admin'?'Admin':c.role==='enroller'?'Enrolador':'Empleado'}</span>${c.saitNum?' · SAIT #'+c.saitNum:''} · ${hasFace?'<span style="color:#2B4EAE">🤳 Rostro registrado</span>':'<span style="color:#e8a020">⚠️ Sin rostro</span>'}</div>
       </div>
       <div style="display:flex;gap:8px">
         <button onclick="window.editCollab('${c.id}')" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-size:12px;cursor:pointer">Editar</button>
         <button onclick="window.deleteCollab('${c.id}','${c.name}')" style="background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:8px;padding:6px 12px;color:#C41230;font-size:12px;cursor:pointer">Eliminar</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function showAddCollab() {
