@@ -17,7 +17,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <style>
-  :root { 
+  :root {
     --bg: #f4f5f7;
     --surface: #ffffff;
     --surface2: #eef0f3;
@@ -762,6 +762,48 @@
   </div>
 </div>
 
+<!-- Facial Check Screen (Tablet Mode) -->
+<div id="facialScreen" class="screen">
+
+  <!-- Idle state -->
+  <div id="facialIdle" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#1a1f2e 0%,#2d3748 100%);padding:40px">
+    <img src="" id="facialLogo" style="width:200px;margin-bottom:32px;border-radius:12px;background:#fff;padding:16px" alt="Vior Steel">
+    <div style="font-family:'Syne',sans-serif;font-size:16px;color:rgba(255,255,255,0.5);margin-bottom:8px;text-transform:uppercase;letter-spacing:2px">Sistema de Asistencia</div>
+    <div id="facialClock" style="font-family:'Syne',sans-serif;font-size:56px;font-weight:800;color:#fff;letter-spacing:-2px;margin-bottom:8px">--:--</div>
+    <div id="facialDate" style="font-size:18px;color:rgba(255,255,255,0.6);margin-bottom:48px">--</div>
+    <button onclick="window.startFacialScan()" style="background:linear-gradient(135deg,#C41230,#a00e25);border:none;border-radius:20px;padding:24px 56px;color:#fff;font-family:'Syne',sans-serif;font-size:22px;font-weight:800;cursor:pointer;box-shadow:0 8px 32px rgba(196,18,48,0.4);transition:transform 0.1s" onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform='scale(1)'">
+      👤 Registrar asistencia
+    </button>
+    <div style="margin-top:24px;font-size:13px;color:rgba(255,255,255,0.3)">Toca el botón para iniciar</div>
+  </div>
+
+  <!-- Scanning state -->
+  <div id="facialScanning" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#1a1f2e;padding:24px">
+    <div style="display:flex;gap:24px;width:100%;max-width:800px;align-items:center">
+
+      <!-- Left: Camera -->
+      <div style="flex:1;position:relative">
+        <video id="facialVideo" autoplay muted playsinline style="width:100%;border-radius:20px;background:#000;display:block"></video>
+        <canvas id="facialCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;border-radius:20px;pointer-events:none"></canvas>
+        <!-- Oval guide -->
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60%;height:80%;border:3px solid #C41230;border-radius:50%;pointer-events:none;box-shadow:0 0 20px rgba(196,18,48,0.5)"></div>
+        <div id="facialScanStatus" style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#fff;padding:8px 20px;border-radius:999px;font-size:14px;white-space:nowrap">Coloca tu rostro en el óvalo</div>
+      </div>
+
+      <!-- Right: Result -->
+      <div id="facialResult" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:400px">
+        <div style="width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,0.05);border:2px dashed rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:16px">👤</div>
+        <div style="color:rgba(255,255,255,0.4);font-size:16px;text-align:center">Esperando reconocimiento…</div>
+      </div>
+    </div>
+
+    <button onclick="window.cancelFacialScan()" style="margin-top:24px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:12px 32px;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer">
+      Cancelar
+    </button>
+  </div>
+
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -806,6 +848,7 @@ const appCheck = initializeAppCheck(fbApp, {
 const DEMO_USERS = [
   { user: 'admin', pin: '0000', name: 'Administrador', role: 'admin' },
   { user: 'enroller', pin: '9999', name: 'Enrolador', role: 'enroller' },
+  { user: 'tableta', pin: '1111', name: 'Tableta', role: 'tablet' },
 ];
 
 const DEFAULT_HOLIDAYS = [
@@ -933,6 +976,11 @@ async function doLogin() {
       startRealtimeListener();
     }
     if (hardcodedMatch.role === 'enroller') showEnroller();
+    else if (hardcodedMatch.role === 'tablet') {
+      await loadConfigFromDB();
+      localStorage.setItem('tabletSession', '1');
+      showFacialScreen();
+    }
     else showAdmin();
     return;
   }
@@ -971,7 +1019,9 @@ async function doLogin() {
 
 function logout() {
   if (unsubscribe) { unsubscribe(); unsubscribe = null; }
-  stopEnrollCamera(); // Stop camera if enroller was active
+  stopEnrollCamera();
+  stopFacialCamera();
+  localStorage.removeItem('tabletSession');
   currentUser = null; userGeo = null; geoOk = false;
   RECORDS = [];
   show('loginScreen');
@@ -2031,8 +2081,235 @@ async function deleteFace(userId) {
   } catch(e) { showToast('⚠️ Error al eliminar', 'error'); }
 }
 
+// ════════════════════════════════
+//  FACIAL CHECK SCREEN
+// ════════════════════════════════
+let facialStream = null;
+let facialScanInterval = null;
+let facialDescriptors = [];
+let facialProcessing = false;
+
+async function showFacialScreen() {
+  show('facialScreen');
+  // Set logo
+  const logoEl = document.getElementById('facialLogo');
+  const logoImg = document.querySelector('.logo-wrap img');
+  if (logoImg) logoEl.src = logoImg.src;
+  // Start clock
+  updateFacialClock();
+  setInterval(updateFacialClock, 1000);
+}
+
+function updateFacialClock() {
+  const now = new Date();
+  const clockEl = document.getElementById('facialClock');
+  const dateEl = document.getElementById('facialDate');
+  if (clockEl) clockEl.textContent = now.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'});
+  if (dateEl) {
+    const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    dateEl.textContent = `${days[now.getDay()]}, ${now.getDate()} de ${months[now.getMonth()]} de ${now.getFullYear()}`;
+  }
+}
+
+async function startFacialScan() {
+  // Load models if needed
+  if (!faceModelsLoaded) await loadFaceModels();
+
+  // Load face descriptors from Firebase
+  try {
+    const snap = await getDocs(collection(db, 'faces'));
+    facialDescriptors = snap.docs.map(d => ({
+      userId: d.id,
+      name: d.data().name,
+      descriptor: new Float32Array(d.data().descriptor)
+    }));
+    if (!facialDescriptors.length) {
+      showToast('⚠️ No hay rostros registrados', 'error');
+      return;
+    }
+  } catch(e) {
+    showToast('⚠️ Error cargando rostros', 'error');
+    return;
+  }
+
+  // Show scanning UI
+  document.getElementById('facialIdle').style.display = 'none';
+  document.getElementById('facialScanning').style.display = 'flex';
+
+  // Start camera
+  try {
+    facialStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
+    document.getElementById('facialVideo').srcObject = facialStream;
+  } catch(e) {
+    showToast('⚠️ No se pudo acceder a la cámara', 'error');
+    cancelFacialScan();
+    return;
+  }
+
+  // Start scanning every 1.5 seconds
+  facialProcessing = false;
+  facialScanInterval = setInterval(scanForFace, 1500);
+}
+
+async function scanForFace() {
+  if (facialProcessing) return;
+  const video = document.getElementById('facialVideo');
+  if (!video || !facialDescriptors.length) return;
+
+  facialProcessing = true;
+  document.getElementById('facialScanStatus').textContent = '🔍 Reconociendo…';
+
+  try {
+    const detection = await faceapi
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.5 }))
+      .withFaceLandmarks(true)
+      .withFaceDescriptor();
+
+    if (!detection) {
+      document.getElementById('facialScanStatus').textContent = 'Coloca tu rostro en el óvalo';
+      facialProcessing = false;
+      return;
+    }
+
+    // Compare with registered faces
+    const queryDescriptor = detection.descriptor;
+    let bestMatch = null;
+    let bestDistance = 0.6; // threshold
+
+    facialDescriptors.forEach(fd => {
+      const distance = faceapi.euclideanDistance(queryDescriptor, fd.descriptor);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestMatch = fd;
+      }
+    });
+
+    if (!bestMatch) {
+      document.getElementById('facialScanStatus').textContent = '❌ Rostro no reconocido';
+      facialProcessing = false;
+      return;
+    }
+
+    // Match found — register check
+    clearInterval(facialScanInterval);
+    await registerFacialCheck(bestMatch);
+
+  } catch(e) {
+    console.log('Scan error:', e);
+    facialProcessing = false;
+  }
+}
+
+async function registerFacialCheck(match) {
+  await loadConfigFromDB();
+  const now = new Date();
+  const timeStr24 = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const h = now.getHours(), m = now.getMinutes();
+  const ampm = h >= 12 ? 'p.m.' : 'a.m.';
+  const h12 = h % 12 || 12;
+  const timeDisplay = `${String(h12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${ampm}`;
+  const date = todayStr();
+
+  // Determine entry or exit based on existing records
+  const q = query(collection(db, 'records'), where('userId','==',match.userId), where('date','==',date));
+  const snap = await getDocs(q);
+  const todayRecs = snap.docs.map(d => d.data());
+  const hasEntry = todayRecs.some(r => r.type === 'entry');
+  const hasExit  = todayRecs.some(r => r.type === 'exit');
+
+  if (hasEntry && hasExit) {
+    showFacialConfirmation(match.name, timeDisplay, null, '⚠️ Ya registraste entrada y salida hoy');
+    return;
+  }
+
+  const type = hasEntry ? 'exit' : 'entry';
+  const rec = {
+    id: Date.now(), userId: match.userId, name: match.name,
+    type, date, time: timeDisplay, time24: timeStr24,
+    timestamp: now.toISOString(),
+    lat: CONFIG.lat, lng: CONFIG.lng, distance: 0,
+    facial: true
+  };
+
+  if (type === 'entry') {
+    const diff = timeToMinutes(timeStr24) - timeToMinutes(CONFIG.startTime);
+    rec.late = diff > CONFIG.tolerance ? diff : 0;
+  }
+
+  if (type === 'exit') {
+    const entryRec = todayRecs.find(r => r.type === 'entry');
+    if (entryRec) {
+      const rawEntry = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
+      const effectiveEntry = Math.max(rawEntry, timeToMinutes(CONFIG.startTime));
+      const exitMins = timeToMinutes(timeStr24);
+      rec.workedMin = Math.max(0, exitMins - effectiveEntry - (CONFIG.lunchMin || 60));
+      const overMin = exitMins - timeToMinutes(CONFIG.endTime);
+      rec.extraMin = overMin >= 30 ? overMin : 0;
+    }
+  }
+
+  await setDoc(doc(db, 'records', String(rec.id)), rec);
+  showFacialConfirmation(match.name, timeDisplay, type, null);
+}
+
+function showFacialConfirmation(name, time, type, message) {
+  stopFacialCamera();
+  const resultEl = document.getElementById('facialResult');
+  const isEntry = type === 'entry';
+  const color = type === null ? '#e8a020' : isEntry ? '#2B4EAE' : '#C41230';
+  const icon = type === null ? '⚠️' : isEntry ? '🟢' : '🔴';
+  const label = type === null ? message : isEntry ? 'Entrada registrada' : 'Salida registrada';
+
+  resultEl.innerHTML = `
+    <div style="width:100px;height:100px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:16px;box-shadow:0 0 30px ${color}66">${icon}</div>
+    <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#fff;text-align:center;margin-bottom:8px">${name}</div>
+    <div style="font-size:18px;color:rgba(255,255,255,0.7);margin-bottom:8px">${time}</div>
+    <div style="font-size:16px;color:${color};font-weight:600">${label}</div>
+  `;
+  document.getElementById('facialScanStatus').textContent = '✅ Listo';
+
+  // Return to idle after 4 seconds
+  setTimeout(() => {
+    cancelFacialScan();
+  }, 4000);
+}
+
+function stopFacialCamera() {
+  if (facialStream) {
+    facialStream.getTracks().forEach(t => t.stop());
+    facialStream = null;
+  }
+  if (facialScanInterval) {
+    clearInterval(facialScanInterval);
+    facialScanInterval = null;
+  }
+}
+
+function cancelFacialScan() {
+  stopFacialCamera();
+  facialProcessing = false;
+  facialDescriptors = [];
+  document.getElementById('facialIdle').style.display = 'flex';
+  document.getElementById('facialScanning').style.display = 'none';
+  // Reset result panel
+  document.getElementById('facialResult').innerHTML = `
+    <div style="width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,0.05);border:2px dashed rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:16px">👤</div>
+    <div style="color:rgba(255,255,255,0.4);font-size:16px;text-align:center">Esperando reconocimiento…</div>
+  `;
+}
+
 // Enter key en login
 document.getElementById('loginPin').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+// Auto-restore tablet session if page reloads
+window.addEventListener('load', async () => {
+  if (localStorage.getItem('tabletSession') === '1') {
+    currentUser = { user: 'tableta', pin: '1111', name: 'Tableta', role: 'tablet' };
+    await loadConfigFromDB();
+    showFacialScreen();
+  }
+});
 
 // ════════════════════════════════
 //  REPORTS
@@ -2258,6 +2535,224 @@ function exportIncidencesCSV() {
 }
 
 
+// ════════════════════════════════
+//  FACIAL CHECK SCREEN
+// ════════════════════════════════
+let facialStream = null;
+let facialScanInterval = null;
+let facialDescriptors = [];
+let facialProcessing = false;
+
+async function showFacialScreen() {
+  show('facialScreen');
+  // Set logo
+  const logoEl = document.getElementById('facialLogo');
+  const logoImg = document.querySelector('.logo-wrap img');
+  if (logoImg) logoEl.src = logoImg.src;
+  // Start clock
+  updateFacialClock();
+  setInterval(updateFacialClock, 1000);
+}
+
+function updateFacialClock() {
+  const now = new Date();
+  const clockEl = document.getElementById('facialClock');
+  const dateEl = document.getElementById('facialDate');
+  if (clockEl) clockEl.textContent = now.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'});
+  if (dateEl) {
+    const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    dateEl.textContent = `${days[now.getDay()]}, ${now.getDate()} de ${months[now.getMonth()]} de ${now.getFullYear()}`;
+  }
+}
+
+async function startFacialScan() {
+  // Load models if needed
+  if (!faceModelsLoaded) await loadFaceModels();
+
+  // Load face descriptors from Firebase
+  try {
+    const snap = await getDocs(collection(db, 'faces'));
+    facialDescriptors = snap.docs.map(d => ({
+      userId: d.id,
+      name: d.data().name,
+      descriptor: new Float32Array(d.data().descriptor)
+    }));
+    if (!facialDescriptors.length) {
+      showToast('⚠️ No hay rostros registrados', 'error');
+      return;
+    }
+  } catch(e) {
+    showToast('⚠️ Error cargando rostros', 'error');
+    return;
+  }
+
+  // Show scanning UI
+  document.getElementById('facialIdle').style.display = 'none';
+  document.getElementById('facialScanning').style.display = 'flex';
+
+  // Start camera
+  try {
+    facialStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
+    document.getElementById('facialVideo').srcObject = facialStream;
+  } catch(e) {
+    showToast('⚠️ No se pudo acceder a la cámara', 'error');
+    cancelFacialScan();
+    return;
+  }
+
+  // Start scanning every 1.5 seconds
+  facialProcessing = false;
+  facialScanInterval = setInterval(scanForFace, 1500);
+}
+
+async function scanForFace() {
+  if (facialProcessing) return;
+  const video = document.getElementById('facialVideo');
+  if (!video || !facialDescriptors.length) return;
+
+  facialProcessing = true;
+  document.getElementById('facialScanStatus').textContent = '🔍 Reconociendo…';
+
+  try {
+    const detection = await faceapi
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.5 }))
+      .withFaceLandmarks(true)
+      .withFaceDescriptor();
+
+    if (!detection) {
+      document.getElementById('facialScanStatus').textContent = 'Coloca tu rostro en el óvalo';
+      facialProcessing = false;
+      return;
+    }
+
+    // Compare with registered faces
+    const queryDescriptor = detection.descriptor;
+    let bestMatch = null;
+    let bestDistance = 0.6; // threshold
+
+    facialDescriptors.forEach(fd => {
+      const distance = faceapi.euclideanDistance(queryDescriptor, fd.descriptor);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestMatch = fd;
+      }
+    });
+
+    if (!bestMatch) {
+      document.getElementById('facialScanStatus').textContent = '❌ Rostro no reconocido';
+      facialProcessing = false;
+      return;
+    }
+
+    // Match found — register check
+    clearInterval(facialScanInterval);
+    await registerFacialCheck(bestMatch);
+
+  } catch(e) {
+    console.log('Scan error:', e);
+    facialProcessing = false;
+  }
+}
+
+async function registerFacialCheck(match) {
+  await loadConfigFromDB();
+  const now = new Date();
+  const timeStr24 = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const h = now.getHours(), m = now.getMinutes();
+  const ampm = h >= 12 ? 'p.m.' : 'a.m.';
+  const h12 = h % 12 || 12;
+  const timeDisplay = `${String(h12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${ampm}`;
+  const date = todayStr();
+
+  // Determine entry or exit based on existing records
+  const q = query(collection(db, 'records'), where('userId','==',match.userId), where('date','==',date));
+  const snap = await getDocs(q);
+  const todayRecs = snap.docs.map(d => d.data());
+  const hasEntry = todayRecs.some(r => r.type === 'entry');
+  const hasExit  = todayRecs.some(r => r.type === 'exit');
+
+  if (hasEntry && hasExit) {
+    showFacialConfirmation(match.name, timeDisplay, null, '⚠️ Ya registraste entrada y salida hoy');
+    return;
+  }
+
+  const type = hasEntry ? 'exit' : 'entry';
+  const rec = {
+    id: Date.now(), userId: match.userId, name: match.name,
+    type, date, time: timeDisplay, time24: timeStr24,
+    timestamp: now.toISOString(),
+    lat: CONFIG.lat, lng: CONFIG.lng, distance: 0,
+    facial: true
+  };
+
+  if (type === 'entry') {
+    const diff = timeToMinutes(timeStr24) - timeToMinutes(CONFIG.startTime);
+    rec.late = diff > CONFIG.tolerance ? diff : 0;
+  }
+
+  if (type === 'exit') {
+    const entryRec = todayRecs.find(r => r.type === 'entry');
+    if (entryRec) {
+      const rawEntry = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
+      const effectiveEntry = Math.max(rawEntry, timeToMinutes(CONFIG.startTime));
+      const exitMins = timeToMinutes(timeStr24);
+      rec.workedMin = Math.max(0, exitMins - effectiveEntry - (CONFIG.lunchMin || 60));
+      const overMin = exitMins - timeToMinutes(CONFIG.endTime);
+      rec.extraMin = overMin >= 30 ? overMin : 0;
+    }
+  }
+
+  await setDoc(doc(db, 'records', String(rec.id)), rec);
+  showFacialConfirmation(match.name, timeDisplay, type, null);
+}
+
+function showFacialConfirmation(name, time, type, message) {
+  stopFacialCamera();
+  const resultEl = document.getElementById('facialResult');
+  const isEntry = type === 'entry';
+  const color = type === null ? '#e8a020' : isEntry ? '#2B4EAE' : '#C41230';
+  const icon = type === null ? '⚠️' : isEntry ? '🟢' : '🔴';
+  const label = type === null ? message : isEntry ? 'Entrada registrada' : 'Salida registrada';
+
+  resultEl.innerHTML = `
+    <div style="width:100px;height:100px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:16px;box-shadow:0 0 30px ${color}66">${icon}</div>
+    <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#fff;text-align:center;margin-bottom:8px">${name}</div>
+    <div style="font-size:18px;color:rgba(255,255,255,0.7);margin-bottom:8px">${time}</div>
+    <div style="font-size:16px;color:${color};font-weight:600">${label}</div>
+  `;
+  document.getElementById('facialScanStatus').textContent = '✅ Listo';
+
+  // Return to idle after 4 seconds
+  setTimeout(() => {
+    cancelFacialScan();
+  }, 4000);
+}
+
+function stopFacialCamera() {
+  if (facialStream) {
+    facialStream.getTracks().forEach(t => t.stop());
+    facialStream = null;
+  }
+  if (facialScanInterval) {
+    clearInterval(facialScanInterval);
+    facialScanInterval = null;
+  }
+}
+
+function cancelFacialScan() {
+  stopFacialCamera();
+  facialProcessing = false;
+  facialDescriptors = [];
+  document.getElementById('facialIdle').style.display = 'flex';
+  document.getElementById('facialScanning').style.display = 'none';
+  // Reset result panel
+  document.getElementById('facialResult').innerHTML = `
+    <div style="width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,0.05);border:2px dashed rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:16px">👤</div>
+    <div style="color:rgba(255,255,255,0.4);font-size:16px;text-align:center">Esperando reconocimiento…</div>
+  `;
+}
+
 // Enter key en login
 // ════════════════════════════════
 //  EXPOSE TO WINDOW (required for type="module")
@@ -2293,6 +2788,12 @@ window.closeManualModal = closeManualModal;
 window.showEmpDetail = showEmpDetail;
 window.closeModal = closeModal;
 window.captureFace = captureFace;
+window.startFacialScan = startFacialScan;
+window.activateTabletMode = async function() {
+  await loadConfigFromDB();
+  showFacialScreen();
+};
+window.cancelFacialScan = cancelFacialScan;
 window.deleteFace = deleteFace;
 </script>
 </body>
