@@ -1640,7 +1640,8 @@ function closeCollabModal(e) {
 // ════════════════════════════════
 //  MANUAL REGISTER
 // ════════════════════════════════
-function openManualModal() {
+async function openManualModal() {
+  if (!COLLABS.length) await loadCollabs();
   const sel = document.getElementById('manualEmp');
   sel.innerHTML = '<option value="">Selecciona un colaborador</option>';
   const emps = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller');
