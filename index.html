@@ -56,7 +56,7 @@
 
   .logo-wrap { text-align: center; margin-bottom: 40px; }
   .logo-icon {
-    width: 72px; height: 72px; 
+    width: 72px; height: 72px;
     background: linear-gradient(135deg, #C41230, #2B4EAE);
     border-radius: 20px;
     display: inline-flex; align-items: center; justify-content: center;
@@ -710,6 +710,18 @@
     </div>
     <input type="hidden" id="collabRole" value="emp">
 
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border-radius:12px;padding:14px 16px;margin-bottom:20px">
+      <div>
+        <div style="font-size:14px;font-weight:500">🏢 Empleado de Oficina</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">No se contabilizan horas extra</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:46px;height:26px;cursor:pointer">
+        <input type="checkbox" id="collabOffice" style="opacity:0;width:0;height:0">
+        <span onclick="this.previousElementSibling.click()" style="position:absolute;inset:0;background:#ccc;border-radius:999px;transition:0.3s" id="officeToggleBg"></span>
+        <span onclick="this.previousElementSibling.previousElementSibling.click()" style="position:absolute;left:3px;top:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s" id="officeToggleKnob"></span>
+      </label>
+    </div>
+
     <div style="display:flex;gap:10px;margin-top:4px">
       <button class="save-btn" id="btnSaveCollab" onclick="window.saveCollab()" style="flex:1">Guardar</button>
       <button class="close-modal" onclick="document.getElementById('collabModal').classList.remove('open')" style="flex:1">Cancelar</button>
@@ -1202,7 +1214,10 @@ async function registerCheck(type) {
       } else {
         const endMins = timeToMinutes(CONFIG.endTime);
         const overMin = exitMins - endMins;
-        rec.extraMin = overMin >= 30 ? overMin : 0;
+        // Skip extras for office employees
+        const empData = COLLABS.find(c => c.user === currentUser.user);
+        const isOffice = empData?.office || currentUser?.office;
+        rec.extraMin = (!isOffice && overMin >= 30) ? overMin : 0;
       }
     }
   }
@@ -1618,7 +1633,7 @@ async function renderCollabList() {
       <div class="emp-avatar" style="background:${c.role==='admin'?'linear-gradient(135deg,#2B4EAE,#1a3a8a)':'linear-gradient(135deg,#C41230,#a00e25)'}">${c.name ? c.name[0].toUpperCase() : '?'}</div>
       <div class="emp-info">
         <div class="emp-name">${c.name}</div>
-        <div class="emp-detail">@${c.user} · <span style="color:${c.role==='admin'?'#2B4EAE':'#C41230'};font-weight:600">${c.role==='admin'?'Admin':c.role==='enroller'?'Enrolador':'Empleado'}</span>${c.saitNum?' · SAIT #'+c.saitNum:''} · ${hasFace?'<span style="color:#2B4EAE">🤳 Rostro registrado</span>':'<span style="color:#e8a020">⚠️ Sin rostro</span>'}</div>
+        <div class="emp-detail">@${c.user} · <span style="color:${c.role==='admin'?'#2B4EAE':'#C41230'};font-weight:600">${c.role==='admin'?'Admin':c.role==='enroller'?'Enrolador':'Empleado'}</span>${c.office?' · <span style="color:#6366f1">🏢 Oficina</span>':''}${c.saitNum?' · SAIT #'+c.saitNum:''} · ${hasFace?'<span style="color:#2B4EAE">🤳 Rostro registrado</span>':'<span style="color:#e8a020">⚠️ Sin rostro</span>'}</div>
       </div>
       <div style="display:flex;gap:8px">
         <button onclick="window.editCollab('${c.id}')" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-size:12px;cursor:pointer">Editar</button>
@@ -1636,6 +1651,8 @@ function showAddCollab() {
   document.getElementById('collabPin').value = '';
   document.getElementById('collabSaitNum').value = '';
   document.getElementById('collabUser').disabled = false;
+  const officeEl = document.getElementById('collabOffice');
+  if (officeEl) { officeEl.checked = false; updateOfficeToggle(); }
   selectRole('emp');
   document.getElementById('collabModal').classList.add('open');
 }
@@ -1650,6 +1667,8 @@ function editCollab(id) {
   document.getElementById('collabPin').value = '';
   document.getElementById('collabSaitNum').value = c.saitNum || '';
   document.getElementById('collabUser').disabled = true;
+  const officeEl2 = document.getElementById('collabOffice');
+  if (officeEl2) { officeEl2.checked = !!c.office; updateOfficeToggle(); }
   selectRole(c.role || 'emp');
   document.getElementById('collabModal').classList.add('open');
 }
@@ -1667,8 +1686,9 @@ async function saveCollab() {
   try {
     const role = document.getElementById('collabRole').value || 'emp';
     const saitNum = parseInt(document.getElementById('collabSaitNum').value) || null;
+    const office = document.getElementById('collabOffice')?.checked || false;
     const hashedPinSave = await hashPin(pin);
-    const data = { name, user, pin: hashedPinSave, role, saitNum, createdAt: new Date().toISOString() };
+    const data = { name, user, pin: hashedPinSave, role, saitNum, office, createdAt: new Date().toISOString() };
     const docId = editId || user;
     await setDoc(doc(db, 'users', docId), data);
     document.getElementById('collabModal').classList.remove('open');
@@ -1689,6 +1709,20 @@ async function deleteCollab(id, name) {
     await loadCollabs();
     showToast('✅ Colaborador eliminado', 'success');
   } catch(e) { showToast('⚠️ Error al eliminar', 'error'); }
+}
+
+function updateOfficeToggle() {
+  const cb = document.getElementById('collabOffice');
+  const bg = document.getElementById('officeToggleBg');
+  const knob = document.getElementById('officeToggleKnob');
+  if (!cb || !bg || !knob) return;
+  if (cb.checked) {
+    bg.style.background = '#2B4EAE';
+    knob.style.left = '23px';
+  } else {
+    bg.style.background = '#ccc';
+    knob.style.left = '3px';
+  }
 }
 
 function selectRole(role) {
@@ -2621,6 +2655,7 @@ window.addHoliday = addHoliday;
 window.removeHoliday = removeHoliday;
 window.showAddCollab = showAddCollab;
 window.selectRole = selectRole;
+window.updateOfficeToggle = updateOfficeToggle;
 window.editCollab = editCollab;
 window.saveCollab = saveCollab;
 window.deleteCollab = deleteCollab;
