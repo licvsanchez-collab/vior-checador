@@ -70,7 +70,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 24px;
-    padding: 32px 28px; 
+    padding: 32px 28px;
     width: 100%; max-width: 380px;
     box-shadow: 0 8px 40px rgba(0,0,0,0.10);
   }
@@ -423,17 +423,29 @@
       <span id="geoText">Obteniendo ubicación…</span>
     </div>
 
-    <button class="big-btn entry disabled" id="btnEntry" onclick="registerCheck('entry')">
-      <span class="btn-icon">🟢</span>
-      <span class="btn-label">Registrar Entrada</span>
-      <span class="btn-sub" id="btnEntrySub">Verificando ubicación…</span>
-    </button>
+    <!-- Standard mode buttons -->
+    <div id="standardButtons">
+      <button class="big-btn entry disabled" id="btnEntry" onclick="registerCheck('entry')">
+        <span class="btn-icon">🟢</span>
+        <span class="btn-label">Registrar Entrada</span>
+        <span class="btn-sub" id="btnEntrySub">Verificando ubicación…</span>
+      </button>
 
-    <button class="big-btn exit disabled" id="btnExit" onclick="registerCheck('exit')">
-      <span class="btn-icon">🔴</span>
-      <span class="btn-label">Registrar Salida</span>
-      <span class="btn-sub" id="btnExitSub">Primero registra tu entrada</span>
-    </button>
+      <button class="big-btn exit disabled" id="btnExit" onclick="registerCheck('exit')">
+        <span class="btn-icon">🔴</span>
+        <span class="btn-label">Registrar Salida</span>
+        <span class="btn-sub" id="btnExitSub">Primero registra tu entrada</span>
+      </button>
+    </div>
+
+    <!-- Biometric mode button -->
+    <div id="biometricButton" style="display:none">
+      <button class="big-btn disabled" id="btnFacial" onclick="window.startMobileFacialScan()" style="background:linear-gradient(135deg,#2B4EAE,#1a3a8a);box-shadow:0 8px 32px rgba(43,78,174,0.25)">
+        <span class="btn-icon">🤳</span>
+        <span class="btn-label">Registrar con rostro</span>
+        <span class="btn-sub" id="btnFacialSub">Verificando ubicación…</span>
+      </button>
+    </div>
   </div>
 
   <div class="today-log" id="todayLog"></div>
@@ -612,6 +624,21 @@
             <button type="button" class="day-btn" data-day="0" onclick="window.toggleDay(0)">Dom</button>
           </div>
           <div style="font-size:11px;color:var(--muted);margin-top:8px">Los días no marcados se consideran horas extra automáticamente</div>
+        </div>
+      </div>
+
+      <div class="config-card">
+        <div class="config-title">🔐 Modo de registro</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div>
+            <div style="font-size:14px;font-weight:500">Registro biométrico obligatorio</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">Los colaboradores deben usar reconocimiento facial desde su celular</div>
+          </div>
+          <div onclick="window.toggleBiometric()" style="position:relative;display:inline-block;width:46px;height:26px;cursor:pointer">
+            <input type="checkbox" id="cfgBiometric" style="display:none">
+            <div id="biometricToggleBg" style="position:absolute;inset:0;background:#ccc;border-radius:999px;transition:0.3s"></div>
+            <div id="biometricToggleKnob" style="position:absolute;left:3px;top:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>
+          </div>
         </div>
       </div>
 
@@ -888,7 +915,8 @@ let CONFIG = {
   startTime: '09:00', endTime: '18:00', tolerance: 10,
   radius: 150, lat: 19.4326, lng: -99.1332,
   workDays: [1,2,3,4,5],
-  holidays: DEFAULT_HOLIDAYS
+  holidays: DEFAULT_HOLIDAYS,
+  biometricRequired: false
 };
 
 let RECORDS = [];
@@ -1065,6 +1093,12 @@ function showEmployee() {
   startClock();
   requestGeo();
   renderTodayLog();
+  // Show correct buttons based on biometric mode
+  const biometricMode = CONFIG.biometricRequired || false;
+  const standardDiv = document.getElementById('standardButtons');
+  const biometricDiv = document.getElementById('biometricButton');
+  if (standardDiv) standardDiv.style.display = biometricMode ? 'none' : 'block';
+  if (biometricDiv) biometricDiv.style.display = biometricMode ? 'block' : 'none';
 }
 
 async function showAdmin() {
@@ -1150,13 +1184,22 @@ function updateButtons() {
 
   const bE = document.getElementById('btnEntry');
   const bX = document.getElementById('btnExit');
+  const bF = document.getElementById('btnFacial');
 
-  bE.classList.toggle('disabled', !geoOk || hasEntry);
+  if (bE) bE.classList.toggle('disabled', !geoOk || hasEntry);
   document.getElementById('btnEntrySub').textContent = hasEntry
     ? `Registrada a las ${recs.find(r=>r.type==='entry').time}`
     : geoOk ? 'Presiona para registrar tu llegada' : 'Debes estar en la zona de trabajo';
 
-  bX.classList.toggle('disabled', !geoOk || !hasEntry || hasExit);
+  if (bX) bX.classList.toggle('disabled', !geoOk || !hasEntry || hasExit);
+  if (bF) {
+    bF.classList.toggle('disabled', !geoOk || (hasEntry && hasExit));
+    document.getElementById('btnFacialSub').textContent = hasExit
+      ? 'Jornada completada'
+      : !hasEntry ? 'Presiona para registrar'
+      : geoOk ? 'Presiona para registrar salida'
+      : 'Debes estar en la zona de trabajo';
+  }
   document.getElementById('btnExitSub').textContent = hasExit
     ? `Registrada a las ${recs.find(r=>r.type==='exit').time}`
     : !hasEntry ? 'Primero registra tu entrada'
@@ -1400,6 +1443,34 @@ function loadConfig() {
     btn.classList.toggle('active', workDays.includes(day));
   });
   renderHolidayList();
+  // Render biometric toggle
+  const bioEl = document.getElementById('cfgBiometric');
+  if (bioEl) {
+    bioEl.checked = CONFIG.biometricRequired || false;
+    updateBiometricToggle();
+  }
+}
+
+function toggleBiometric() {
+  const cb = document.getElementById('cfgBiometric');
+  if (!cb) return;
+  cb.checked = !cb.checked;
+  CONFIG.biometricRequired = cb.checked;
+  updateBiometricToggle();
+}
+
+function updateBiometricToggle() {
+  const cb = document.getElementById('cfgBiometric');
+  const bg = document.getElementById('biometricToggleBg');
+  const knob = document.getElementById('biometricToggleKnob');
+  if (!cb || !bg || !knob) return;
+  if (cb.checked) {
+    bg.style.background = '#C41230';
+    knob.style.left = '23px';
+  } else {
+    bg.style.background = '#ccc';
+    knob.style.left = '3px';
+  }
 }
 
 function renderHolidayList() {
@@ -1475,6 +1546,8 @@ async function saveConfig() {
     lat:       +document.getElementById('cfgLat').value,
     lng:       +document.getElementById('cfgLng').value,
     workDays,
+    holidays: CONFIG.holidays || DEFAULT_HOLIDAYS,
+    biometricRequired: document.getElementById('cfgBiometric')?.checked || false,
   };
   try {
     await setDoc(doc(db, 'config', 'main'), CONFIG);
@@ -2404,6 +2477,126 @@ function cancelFacialScan() {
   `;
 }
 
+// ════════════════════════════════
+//  MOBILE FACIAL SCAN
+// ════════════════════════════════
+let mobileFacialStream = null;
+let mobileFacialModal = null;
+
+async function startMobileFacialScan() {
+  if (!geoOk) { showToast('Debes estar en la zona de trabajo', 'error'); return; }
+  
+  // Load models if needed
+  if (!faceModelsLoaded) {
+    showToast('Cargando modelos…', '');
+    await loadFaceModels();
+  }
+
+  // Load face descriptors
+  let descriptors = [];
+  try {
+    const snap = await getDocs(collection(db, 'faces'));
+    descriptors = snap.docs.map(d => ({
+      userId: d.id,
+      name: d.data().name,
+      descriptor: new Float32Array(d.data().descriptor)
+    }));
+    if (!descriptors.length) { showToast('⚠️ Sin rostros registrados', 'error'); return; }
+  } catch(e) { showToast('⚠️ Error cargando rostros', 'error'); return; }
+
+  // Create modal with camera
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px';
+  modal.innerHTML = `
+    <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:#fff;margin-bottom:16px">Verificación facial</div>
+    <div style="position:relative;width:100%;max-width:320px">
+      <video id="mobileVideo" autoplay muted playsinline style="width:100%;border-radius:16px;background:#000;display:block"></video>
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:70%;height:85%;border:3px solid #2B4EAE;border-radius:50%;pointer-events:none;box-shadow:0 0 20px rgba(43,78,174,0.5)"></div>
+      <div id="mobileScanStatus" style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#fff;padding:6px 16px;border-radius:999px;font-size:13px;white-space:nowrap">Coloca tu rostro en el óvalo</div>
+    </div>
+    <button onclick="window.cancelMobileFacial()" style="margin-top:20px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);border-radius:10px;padding:12px 32px;color:#fff;font-size:14px;cursor:pointer">Cancelar</button>
+  `;
+  document.body.appendChild(modal);
+  mobileFacialModal = modal;
+
+  // Start camera
+  try {
+    mobileFacialStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+    document.getElementById('mobileVideo').srcObject = mobileFacialStream;
+  } catch(e) {
+    showToast('⚠️ No se pudo acceder a la cámara', 'error');
+    cancelMobileFacial();
+    return;
+  }
+
+  // Scan
+  let scanning = true;
+  const scanLoop = async () => {
+    if (!scanning) return;
+    const video = document.getElementById('mobileVideo');
+    if (!video) return;
+
+    try {
+      const detection = await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.5 }))
+        .withFaceLandmarks(true)
+        .withFaceDescriptor();
+
+      if (!detection) {
+        setTimeout(scanLoop, 1500);
+        return;
+      }
+
+      document.getElementById('mobileScanStatus').textContent = '🔍 Reconociendo…';
+
+      let bestMatch = null;
+      let bestDistance = 0.6;
+      descriptors.forEach(fd => {
+        const dist = faceapi.euclideanDistance(detection.descriptor, fd.descriptor);
+        if (dist < bestDistance) { bestDistance = dist; bestMatch = fd; }
+      });
+
+      if (!bestMatch) {
+        document.getElementById('mobileScanStatus').textContent = '❌ No reconocido';
+        setTimeout(scanLoop, 2000);
+        return;
+      }
+
+      // Verify it's the logged-in user
+      if (bestMatch.userId !== currentUser.user) {
+        document.getElementById('mobileScanStatus').textContent = '❌ Rostro no coincide con tu usuario';
+        setTimeout(scanLoop, 2000);
+        return;
+      }
+
+      scanning = false;
+      document.getElementById('mobileScanStatus').textContent = `✅ ${bestMatch.name}`;
+
+      // Register check
+      setTimeout(async () => {
+        cancelMobileFacial();
+        await registerCheck(getRecordsToday(currentUser.user).some(r => r.type === 'entry') ? 'exit' : 'entry');
+      }, 1000);
+
+    } catch(e) {
+      setTimeout(scanLoop, 1500);
+    }
+  };
+
+  setTimeout(scanLoop, 1000);
+}
+
+function cancelMobileFacial() {
+  if (mobileFacialStream) {
+    mobileFacialStream.getTracks().forEach(t => t.stop());
+    mobileFacialStream = null;
+  }
+  if (mobileFacialModal) {
+    document.body.removeChild(mobileFacialModal);
+    mobileFacialModal = null;
+  }
+}
+
 // Enter key en login
 document.getElementById('loginPin').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 
@@ -2641,6 +2834,7 @@ function exportIncidencesCSV() {
 
 
 
+
 // Enter key en login
 // ════════════════════════════════
 //  EXPOSE TO WINDOW (required for type="module")
@@ -2676,6 +2870,10 @@ window.selectManualType = selectManualType;
 window.saveManualRecord = saveManualRecord;
 window.closeManualModal = closeManualModal;
 window.showEmpDetail = showEmpDetail;
+window.startMobileFacialScan = startMobileFacialScan;
+window.cancelMobileFacial = cancelMobileFacial;
+window.toggleBiometric = toggleBiometric;
+window.updateBiometricToggle = updateBiometricToggle;
 window.closeModal = closeModal;
 window.captureFace = captureFace;
 window.startFacialScan = startFacialScan;
