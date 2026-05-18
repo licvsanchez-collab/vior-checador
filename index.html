@@ -36,7 +36,7 @@
     font-family: 'DM Sans', sans-serif;
     background: var(--bg);
     color: var(--text);
-    min-height: 100vh; 
+    min-height: 100vh;
     overflow-x: hidden;
   }
 
@@ -767,7 +767,18 @@
 
   <!-- Idle state -->
   <div id="facialIdle" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#1a1f2e 0%,#2d3748 100%);padding:40px">
-    <img src="" id="facialLogo" style="width:200px;margin-bottom:32px;border-radius:12px;background:#fff;padding:16px" alt="Vior Steel">
+    <img src="" id="facialLogo" style="width:200px;margin-bottom:32px;border-radius:12px;background:#fff;padding:16px;cursor:pointer" alt="Vior Steel" onclick="window.facialLogoTap()">
+    <!-- Hidden exit modal -->
+    <div id="facialExitModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:999;align-items:center;justify-content:center">
+      <div style="background:#1a1f2e;border-radius:20px;padding:32px;width:300px;text-align:center">
+        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:#fff;margin-bottom:20px">🔐 Acceso Admin</div>
+        <input type="password" id="facialExitPin" placeholder="PIN de Admin" maxlength="6" inputmode="numeric" style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:10px;padding:12px;color:#fff;font-size:18px;text-align:center;outline:none;margin-bottom:16px">
+        <div style="display:flex;gap:10px">
+          <button onclick="window.confirmFacialExit()" style="flex:1;background:#C41230;border:none;border-radius:10px;padding:12px;color:#fff;font-family:'Syne',sans-serif;font-weight:700;cursor:pointer">Entrar</button>
+          <button onclick="document.getElementById('facialExitModal').style.display='none';document.getElementById('facialExitPin').value=''" style="flex:1;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:10px;padding:12px;color:#fff;cursor:pointer">Cancelar</button>
+        </div>
+      </div>
+    </div>
     <div style="font-family:'Syne',sans-serif;font-size:16px;color:rgba(255,255,255,0.5);margin-bottom:8px;text-transform:uppercase;letter-spacing:2px">Sistema de Asistencia</div>
     <div id="facialClock" style="font-family:'Syne',sans-serif;font-size:56px;font-weight:800;color:#fff;letter-spacing:-2px;margin-bottom:8px">--:--</div>
     <div id="facialDate" style="font-size:18px;color:rgba(255,255,255,0.6);margin-bottom:48px">--</div>
@@ -2089,6 +2100,59 @@ let facialScanInterval = null;
 let facialDescriptors = [];
 let facialProcessing = false;
 
+let facialLogoTapCount = 0;
+let facialLogoTapTimer = null;
+
+function facialLogoTap() {
+  facialLogoTapCount++;
+  clearTimeout(facialLogoTapTimer);
+  if (facialLogoTapCount >= 5) {
+    facialLogoTapCount = 0;
+    const modal = document.getElementById('facialExitModal');
+    modal.style.display = 'flex';
+    document.getElementById('facialExitPin').focus();
+  } else {
+    facialLogoTapTimer = setTimeout(() => { facialLogoTapCount = 0; }, 3000);
+  }
+}
+
+async function confirmFacialExit() {
+  const pin = document.getElementById('facialExitPin').value.trim();
+  const validAdmins = DEMO_USERS.filter(u => u.role === 'admin');
+  const match = validAdmins.find(u => u.pin === pin);
+  if (!match) {
+    // Also check Firebase admins
+    try {
+      const hashedPin = await hashPin(pin);
+      const q = query(collection(db, 'users'), where('pin', '==', hashedPin), where('role', '==', 'admin'));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        document.getElementById('facialExitPin').style.border = '1px solid #C41230';
+        setTimeout(() => document.getElementById('facialExitPin').style.border = '1px solid rgba(255,255,255,0.2)', 1000);
+        return;
+      }
+      const data = snap.docs[0].data();
+      document.getElementById('facialExitModal').style.display = 'none';
+      document.getElementById('facialExitPin').value = '';
+      localStorage.removeItem('tabletSession');
+      currentUser = { ...data };
+      await loadConfigFromDB();
+      await loadRecordsFromDB();
+      startRealtimeListener();
+      showAdmin();
+      return;
+    } catch(e) { return; }
+  }
+  document.getElementById('facialExitModal').style.display = 'none';
+  document.getElementById('facialExitPin').value = '';
+  localStorage.removeItem('tabletSession');
+  currentUser = match;
+  await loadConfigFromDB();
+  await loadRecordsFromDB();
+  startRealtimeListener();
+  showAdmin();
+}
+
 async function showFacialScreen() {
   show('facialScreen');
   // Set logo
@@ -2572,6 +2636,8 @@ window.showEmpDetail = showEmpDetail;
 window.closeModal = closeModal;
 window.captureFace = captureFace;
 window.startFacialScan = startFacialScan;
+window.facialLogoTap = facialLogoTap;
+window.confirmFacialExit = confirmFacialExit;
 window.activateTabletMode = async function() {
   await loadConfigFromDB();
   showFacialScreen();
