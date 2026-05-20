@@ -2320,23 +2320,29 @@ async function captureFace() {
     }
 
     // Capture photo from video
-    const photoCanvas = document.createElement('canvas');
-    photoCanvas.width = 120; photoCanvas.height = 120;
-    const pctx = photoCanvas.getContext('2d');
-    const video = document.getElementById('enrollVideo');
-    const vw = video.videoWidth, vh = video.videoHeight;
-    const size = Math.min(vw, vh);
-    pctx.drawImage(video, (vw-size)/2, (vh-size)/2, size, size, 0, 0, 120, 120);
-    const photoURL = photoCanvas.toDataURL('image/jpeg', 0.7);
+    let photoURL = null;
+    try {
+      const video = document.getElementById('enrollVideo');
+      if (video && video.readyState >= 2 && video.videoWidth > 0) {
+        const photoCanvas = document.createElement('canvas');
+        photoCanvas.width = 120; photoCanvas.height = 120;
+        const pctx = photoCanvas.getContext('2d');
+        const vw = video.videoWidth, vh = video.videoHeight;
+        const size = Math.min(vw, vh);
+        pctx.drawImage(video, (vw-size)/2, (vh-size)/2, size, size, 0, 0, 120, 120);
+        photoURL = photoCanvas.toDataURL('image/jpeg', 0.7);
+      }
+    } catch(photoErr) { console.log('Photo capture skipped:', photoErr); }
 
     // Save descriptor and photo to Firebase
     const descriptor = Array.from(detection.descriptor);
-    await setDoc(doc(db, 'faces', userId), {
-      userId, name: emp.name,
-      descriptor, photoURL,
+    const faceData = {
+      userId, name: emp.name, descriptor,
       enrolledAt: new Date().toISOString(),
       enrolledBy: currentUser.name
-    });
+    };
+    if (photoURL) faceData.photoURL = photoURL;
+    await setDoc(doc(db, 'faces', userId), faceData);
 
     document.getElementById('enrollStatus').textContent = `✅ Rostro de ${emp.name} registrado exitosamente`;
     document.getElementById('enrollStatus').style.color = '#2B4EAE';
