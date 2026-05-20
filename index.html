@@ -2048,17 +2048,26 @@ async function saveManualRecord() {
       rec.late = diff > CONFIG.tolerance ? diff : 0;
     }
     if (type === 'exit') {
-      const dayRecords = RECORDS.filter(r => r.userId === userId && r.date === date);
-      const entryRec = dayRecords.find(r => r.type === 'entry');
-      if (entryRec) {
-        const rawEntry = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
-        const effectiveEntry = Math.max(rawEntry, timeToMinutes(CONFIG.startTime));
-        const exitMins = timeToMinutes(time24);
-        const lunchMin = CONFIG.lunchMin || 60;
-        rec.workedMin = Math.max(0, exitMins - effectiveEntry - lunchMin);
-        const overMin = exitMins - timeToMinutes(CONFIG.endTime);
-        rec.extraMin = overMin >= 30 ? overMin : 0;
-      }
+      // Query Firebase directly to find entry for this day (works for any date)
+      try {
+        const q = query(collection(db, 'records'), 
+          where('userId', '==', userId), 
+          where('date', '==', date),
+          where('type', '==', 'entry')
+        );
+        const entrySnap = await getDocs(q);
+        if (!entrySnap.empty) {
+          const entryRec = entrySnap.docs[0].data();
+          const rawEntry = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
+          const effectiveEntry = Math.max(rawEntry, timeToMinutes(CONFIG.startTime));
+          const exitMins = timeToMinutes(time24);
+          const lunchMin = CONFIG.lunchMin || 60;
+          rec.workedMin = Math.max(0, exitMins - effectiveEntry - lunchMin);
+          const overMin = exitMins - timeToMinutes(CONFIG.endTime);
+          const empData = COLLABS.find(c => c.user === userId);
+          rec.extraMin = (!empData?.office && overMin >= 30) ? overMin : 0;
+        }
+      } catch(e) { console.log('Entry lookup error:', e); }
     }
     await setDoc(doc(db, 'records', String(rec.id)), rec);
     document.getElementById('manualModal').classList.remove('open');
