@@ -2950,6 +2950,148 @@ async function isVacationDay(userId, dateStr) {
 }
 
 // ════════════════════════════════
+//  REPORTS
+// ════════════════════════════════
+let REPORT_RECORDS = [];
+
+function setRange(type) {
+  const now = new Date();
+  let from, to;
+  document.querySelectorAll('#tab-reportes .range-btn').forEach(b => b.classList.remove('active'));
+  if (event?.target) event.target.classList.add('active');
+  if (type === 'today') {
+    from = to = todayStr();
+  } else if (type === 'week') {
+    const day = now.getDay();
+    const daysSinceThursday = (day + 3) % 7;
+    const thu = new Date(now); thu.setDate(now.getDate() - daysSinceThursday);
+    from = dateToStr(thu); to = dateToStr(now);
+  } else if (type === 'lastweek') {
+    const day = now.getDay();
+    const daysSinceThursday = (day + 3) % 7;
+    const lastWed = new Date(now); lastWed.setDate(now.getDate() - daysSinceThursday - 1);
+    const lastThu = new Date(lastWed); lastThu.setDate(lastWed.getDate() - 6);
+    from = dateToStr(lastThu); to = dateToStr(lastWed);
+  } else if (type === 'month') {
+    from = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+    to = todayStr();
+  } else if (type === 'last30') {
+    const d = new Date(now); d.setDate(d.getDate() - 30);
+    from = dateToStr(d); to = todayStr();
+  }
+  document.getElementById('rptFrom').value = from;
+  document.getElementById('rptTo').value = to;
+}
+
+async function generateReport() {
+  const from = document.getElementById('rptFrom').value;
+  const to   = document.getElementById('rptTo').value;
+  if (!from || !to) { showToast('Selecciona un rango de fechas', 'error'); return; }
+  if (from > to) { showToast('La fecha inicial debe ser menor a la final', 'error'); return; }
+  showToast('Generando reporte…', '');
+  try {
+    if (!COLLABS.length) await loadCollabs();
+    // Load vacations for this period
+    const vacSnap = await getDocs(collection(db, 'vacations'));
+    window.REPORT_VACATIONS = vacSnap.docs.map(d => d.data()).filter(v => v.from <= to && v.to >= from);
+    const q = query(collection(db, 'records'), where('date', '>=', from), where('date', '<=', to));
+    const snap = await getDocs(q);
+    REPORT_RECORDS = snap.docs.map(d => d.data());
+    renderReportDashboard(from, to);
+    document.getElementById('rptDashboard').style.display = 'block';
+    showToast('✅ Reporte generado', 'success');
+  } catch(e) { showToast('⚠️ Error: ' + e.message, 'error'); }
+}
+
+function renderReportDashboard(from, to) {
+  const emps = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.active !== false) : DEMO_USERS.filter(u => u.role === 'emp');
+  const workDays = CONFIG.workDays || [1,2,3,4,5];
+  const dates = [];
+  let cur = new Date(from + 'T12:00:00');
+  const end = new Date(to + 'T12:00:00');
+  while (cur <= end) {
+    const d = dateToStr(cur);
+    if (workDays.includes(cur.getDay()) && !isHoliday(d)) dates.push(d);
+    cur.setDate(cur.getDate() + 1);
+  }
+  let totalPresent=0, totalAbsent=0, totalLate=0, totalExtraMin=0;
+  const empRows = emps.map(emp => {
+    let present=0, absent=0, late=0, extraMin=0;
+    dates.forEach(date => {
+      const recs = REPORT_RECORDS.filter(r => r.userId === emp.user && r.date === date);
+      const entry = recs.find(r => r.type === 'entry');
+      const exit  = recs.find(r => r.type === 'exit');
+      const isVac = window.REPORT_VACATIONS?.some(v => v.userId === emp.user && date >= v.from && date <= v.to);
+      if (isVac) { present++; }
+      else if (!entry) absent++;
+      else { present++; if (entry.late > 0) late++; if (exit?.extraMin) extraMin += exit.extraMin; }
+    });
+    totalPresent+=present; totalAbsent+=absent; totalLate+=late; totalExtraMin+=extraMin;
+    return `<div class="emp-row" style="flex-direction:column;align-items:flex-start;gap:10px">
+      <div style="display:flex;align-items:center;gap:12px;width:100%">
+        <div class="emp-avatar" style="background:linear-gradient(135deg,#C41230,#a00e25)">${emp.name[0]}</div>
+        <div class="emp-info"><div class="emp-name">${emp.name}</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;width:100%">
+        <div style="text-align:center;background:rgba(43,78,174,0.08);border-radius:8px;padding:8px">
+          <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#2B4EAE">${present}</div>
+          <div style="font-size:11px;color:var(--muted)">Asistencias</div>
+        </div>
+        <div style="text-align:center;background:rgba(196,18,48,0.08);border-radius:8px;padding:8px">
+          <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#C41230">${absent}</div>
+          <div style="font-size:11px;color:var(--muted)">Faltas</div>
+        </div>
+        <div style="text-align:center;background:rgba(232,160,32,0.08);border-radius:8px;padding:8px">
+          <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#e8a020">${late}</div>
+          <div style="font-size:11px;color:var(--muted)">Retardos</div>
+        </div>
+        <div style="text-align:center;background:rgba(43,78,174,0.08);border-radius:8px;padding:8px">
+          <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#2B4EAE">${fmtMin(extraMin)}</div>
+          <div style="font-size:11px;color:var(--muted)">H. Extra</div>
+        </div>
+      </div>
+    </div>`;
+  });
+  const el = id => document.getElementById(id);
+  if(el('rptPresent')) el('rptPresent').textContent = totalPresent;
+  if(el('rptAbsent')) el('rptAbsent').textContent = totalAbsent;
+  if(el('rptLate')) el('rptLate').textContent = totalLate;
+  if(el('rptExtra')) el('rptExtra').textContent = fmtMin(totalExtraMin);
+  if(el('rptEmpBreakdown')) el('rptEmpBreakdown').innerHTML = empRows.join('') || '<div class="empty-state"><div class="empty-icon">📭</div>Sin colaboradores</div>';
+
+  // Records list grouped by collaborator
+  if (REPORT_RECORDS.length) {
+    const grouped = {};
+    REPORT_RECORDS.forEach(r => {
+      const key = r.userId + '_' + r.date;
+      if (!grouped[key]) grouped[key] = { name: r.name, date: r.date, entry: null, exit: null };
+      if (r.type === 'entry') grouped[key].entry = r;
+      else grouped[key].exit = r;
+    });
+    const sortedKeys = Object.keys(grouped).sort((a,b) => {
+      const [uA,dA] = a.split('_'); const [uB,dB] = b.split('_');
+      return uA.localeCompare(uB) || dA.localeCompare(dB);
+    });
+    let lastUser = '';
+    const html = sortedKeys.map(key => {
+      const g = grouped[key];
+      const header = g.name !== lastUser ? `<div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:#1a1f2e;margin:16px 0 8px;padding-bottom:4px;border-bottom:2px solid #C41230">${g.name}</div>` : '';
+      lastUser = g.name;
+      return header + `<div style="display:grid;grid-template-columns:120px 1fr 1fr 1fr 1fr;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="font-size:13px;color:var(--muted)">${g.date}</div>
+        <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">Entrada</div><div style="font-weight:700;color:#1a1f2e;font-size:13px">${g.entry?.time||'—'}</div></div>
+        <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">Salida</div><div style="font-weight:700;color:#C41230;font-size:13px">${g.exit?.time||'—'}</div></div>
+        <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">Trabajado</div><div style="font-weight:700;color:#2B4EAE;font-size:13px">${g.exit?.workedMin?fmtMin(g.exit.workedMin):'—'}</div></div>
+        <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">Extra</div><div style="font-weight:700;color:#6366f1;font-size:13px">${g.exit?.extraMin>0?fmtMin(g.exit.extraMin):'—'}</div></div>
+      </div>`;
+    }).join('');
+    if(el('rptRecordsList')) el('rptRecordsList').innerHTML = html;
+  } else {
+    if(el('rptRecordsList')) el('rptRecordsList').innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>Sin registros en este periodo</div>';
+  }
+}
+
+// ════════════════════════════════
 //  REPORT EXPORTS
 // ════════════════════════════════
 function exportRangeCSV() { exportIncidencesCSV(); }
@@ -3013,6 +3155,8 @@ window.exportCSV = exportCSV;
 window.exportSummaryCSV = exportSummaryCSV;
 window.setRange = setRange;
 window.generateReport = generateReport;
+window.setRange = setRange;
+window.generateReport = generateReport;
 window.exportRangeCSV = exportRangeCSV;
 window.exportIncidencesCSV = exportIncidencesCSV;
 window.toggleDay = toggleDay;
@@ -3046,6 +3190,8 @@ window.cancelMobileFacial = cancelMobileFacial;
 window.toggleBiometric = toggleBiometric;
 window.updateBiometricToggle = updateBiometricToggle;
 window.closeModal = closeModal;
+window.setRange = setRange;
+window.generateReport = generateReport;
 window.exportRangeCSV = exportRangeCSV;
 window.exportIncidencesCSV = exportIncidencesCSV;
 window.captureFace = captureFace;
