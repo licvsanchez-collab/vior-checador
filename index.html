@@ -1812,8 +1812,8 @@ async function renderCollabList() {
         <button onclick="window.editCollab('${c.id}')" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-size:12px;cursor:pointer">Editar</button>
         <button onclick="window.deleteCollab('${c.id}','${c.name}')" style="background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:8px;padding:6px 12px;color:#C41230;font-size:12px;cursor:pointer">Eliminar</button>
       </div>
-    </div>`;
-  }).join('');
+</div>``
+`).join('');
 }
 
 function showAddCollab() {
@@ -2977,8 +2977,8 @@ function renderVacSummary(vacations) {
         <span>Total: ${cycle.legalDays}</span>
       </div>
       ${adelantosNextCycle > 0 ? `<div style="font-size:11px;color:#e8a020;margin-top:4px">⚠️ ${adelantosNextCycle} día${adelantosNextCycle>1?'s':''} ya tomados del siguiente ciclo</div>` : ''}
-    </div>`;
-  }).join('');
+</div>`
+`).join('');
 }
 
 function renderVacList(vacations) {
@@ -3195,9 +3195,9 @@ function renderReportDashboard(from, to) {
           ${rEntryId ? '<button onclick="window.deleteRecordFromReport(\'' + rEntryId + '\')" style="background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:6px;padding:3px 8px;color:#C41230;font-size:11px;cursor:pointer;width:100%">✕ Ent</button>' : ''}
           ${rExitId ? '<button onclick="window.deleteRecordFromReport(\'' + rExitId + '\')" style="background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:6px;padding:3px 8px;color:#C41230;font-size:11px;cursor:pointer;width:100%">✕ Sal</button>' : ''}
         </div>
-      </div>`;
-    }).join('');
-    if(el('rptRecordsList')) el('rptRecordsList').innerHTML = html;
+</div>`
+`).join('');
+if(el('rptRecordsList')) el('rptRecordsList').innerHTML = html;
   } else {
     if(el('rptRecordsList')) el('rptRecordsList').innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>Sin registros en este periodo</div>';
   }
