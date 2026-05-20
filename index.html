@@ -743,6 +743,9 @@
     <div class="field-label">Número de trabajador SAIT</div>
     <input class="field-input" id="collabSaitNum" type="number" placeholder="Ej: 24" min="1">
 
+    <div class="field-label">Fecha de ingreso</div>
+    <input class="field-input" id="collabHireDate" type="date">
+
     <div class="field-label">Rol</div>
     <div style="display:flex;gap:8px;margin-bottom:20px">
       <button type="button" id="roleEmp" onclick="window.selectRole('emp')" style="flex:1;padding:12px;border-radius:10px;border:2px solid #C41230;background:rgba(196,18,48,0.1);color:#C41230;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;cursor:pointer">👤 Empleado</button>
@@ -1734,7 +1737,7 @@ async function renderCollabList() {
       <div class="emp-avatar" style="background:${c.role==='admin'?'linear-gradient(135deg,#2B4EAE,#1a3a8a)':'linear-gradient(135deg,#C41230,#a00e25)'}">${c.name ? c.name[0].toUpperCase() : '?'}</div>
       <div class="emp-info">
         <div class="emp-name">${c.name}</div>
-        <div class="emp-detail">@${c.user} · <span style="color:${c.role==='admin'?'#2B4EAE':'#C41230'};font-weight:600">${c.role==='admin'?'Admin':c.role==='enroller'?'Enrolador':'Empleado'}</span>${c.office?' · <span style="color:#6366f1">🏢 Oficina</span>':''}${c.saitNum?' · SAIT #'+c.saitNum:''} · ${hasFace?'<span style="color:#2B4EAE">🤳 Rostro registrado</span>':'<span style="color:#e8a020">⚠️ Sin rostro</span>'}</div>
+        <div class="emp-detail">@${c.user} · <span style="color:${c.role==='admin'?'#2B4EAE':'#C41230'};font-weight:600">${c.role==='admin'?'Admin':c.role==='enroller'?'Enrolador':'Empleado'}</span>${c.office?' · <span style="color:#6366f1">🏢 Oficina</span>':''}${c.saitNum?' · SAIT #'+c.saitNum:''}${c.hireDate?' · Ingreso: '+c.hireDate:''} · ${hasFace?'<span style="color:#2B4EAE">🤳 Rostro registrado</span>':'<span style="color:#e8a020">⚠️ Sin rostro</span>'}</div>
       </div>
       <div style="display:flex;gap:8px">
         <button onclick="window.editCollab('${c.id}')" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-size:12px;cursor:pointer">Editar</button>
@@ -1751,6 +1754,7 @@ function showAddCollab() {
   document.getElementById('collabUser').value = '';
   document.getElementById('collabPin').value = '';
   document.getElementById('collabSaitNum').value = '';
+  document.getElementById('collabHireDate').value = '';
   document.getElementById('collabUser').disabled = false;
   const officeEl = document.getElementById('collabOffice');
   if (officeEl) { officeEl.checked = false; updateOfficeToggle(); }
@@ -1769,6 +1773,7 @@ function editCollab(id) {
   document.getElementById('collabUser').value = c.user || '';
   document.getElementById('collabPin').value = '';
   document.getElementById('collabSaitNum').value = c.saitNum || '';
+  document.getElementById('collabHireDate').value = c.hireDate || '';
   document.getElementById('collabUser').disabled = true;
   const officeEl2 = document.getElementById('collabOffice');
   if (officeEl2) { officeEl2.checked = !!c.office; updateOfficeToggle(); }
@@ -1793,8 +1798,9 @@ async function saveCollab() {
     const saitNum = parseInt(document.getElementById('collabSaitNum').value) || null;
     const office = document.getElementById('collabOffice')?.checked || false;
     const active = document.getElementById('collabActive')?.checked !== false;
+    const hireDate = document.getElementById('collabHireDate')?.value || '';
     const hashedPinSave = await hashPin(pin);
-    const data = { name, user, pin: hashedPinSave, role, saitNum, office, active, createdAt: new Date().toISOString() };
+    const data = { name, user, pin: hashedPinSave, role, saitNum, office, active, hireDate, createdAt: new Date().toISOString() };
     const docId = editId || user;
     await setDoc(doc(db, 'users', docId), data);
     document.getElementById('collabModal').classList.remove('open');
