@@ -9,7 +9,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Vior Steel">
-<meta name="application-name" content="Vior Steel"> 
+<meta name="application-name" content="Vior Steel">
 <link rel="apple-touch-icon" href="https://checador.viorsteel.mx/icon.png">
 <link rel="icon" type="image/png" href="https://checador.viorsteel.mx/icon.png">
 <link rel="manifest" href="./manifest.json">
@@ -2754,17 +2754,16 @@ function cancelMobileFacial() {
 
 
 function getLFTDays(yearsOfService) {
-  if (yearsOfService < 1) return 0;
+  if (yearsOfService < 1) return 12;
   if (yearsOfService === 1) return 12;
   if (yearsOfService === 2) return 14;
   if (yearsOfService === 3) return 16;
   if (yearsOfService === 4) return 18;
-  if (yearsOfService === 5) return 20;
-  if (yearsOfService >= 6 && yearsOfService <= 10) return 22;
-  if (yearsOfService >= 11 && yearsOfService <= 15) return 24;
-  if (yearsOfService >= 16 && yearsOfService <= 20) return 26;
-  if (yearsOfService >= 21 && yearsOfService <= 25) return 28;
-  if (yearsOfService >= 26 && yearsOfService <= 30) return 30;
+  if (yearsOfService >= 5 && yearsOfService <= 9) return 20;
+  if (yearsOfService >= 10 && yearsOfService <= 14) return 22;
+  if (yearsOfService >= 15 && yearsOfService <= 19) return 24;
+  if (yearsOfService >= 20 && yearsOfService <= 24) return 26;
+  if (yearsOfService >= 25 && yearsOfService <= 29) return 28;
   return 30;
 }
 
@@ -2849,37 +2848,55 @@ function renderVacSummary(vacations) {
   container.innerHTML = emps.map(emp => {
     const cycle = getCurrentCycle(emp.hireDate);
     if (!cycle) return '';
-    
-    // Days used in current cycle
-    const currentCycleVacs = vacations.filter(v => 
-      v.userId === emp.user && v.from >= cycle.start && v.from <= cycle.end
-    );
-    const usedCurrentCycle = currentCycleVacs.reduce((sum, v) => sum + (v.days || 0), 0);
-    
-    // Days used in next cycle (adelantos)
-    const nextCycleStart = new Date(cycle.end + 'T12:00:00');
-    nextCycleStart.setDate(nextCycleStart.getDate() + 1);
-    const nextCycleStartStr = dateToStr(nextCycleStart);
-    const adelantos = vacations.filter(v => v.userId === emp.user && v.from > cycle.end)
+
+    // Get previous cycle boundaries
+    const prevCycleEnd = new Date(cycle.start + 'T12:00:00');
+    prevCycleEnd.setDate(prevCycleEnd.getDate() - 1);
+    const prevCycleStart = new Date(cycle.start + 'T12:00:00');
+    prevCycleStart.setFullYear(prevCycleStart.getFullYear() - 1);
+    const prevCycleStartStr = dateToStr(prevCycleStart);
+    const prevCycleEndStr = dateToStr(prevCycleEnd);
+
+    // Days used in current cycle (including adelantos taken before cycle started)
+    // Adelantos = days taken after previous cycle ended but before current cycle started
+    // i.e. days taken in the gap between prev cycle end and current cycle start
+    // Actually adelantos = days taken before hireDate anniversary of current year
+    const usedCurrentCycle = vacations
+      .filter(v => v.userId === emp.user && v.from >= cycle.start && v.from <= cycle.end)
       .reduce((sum, v) => sum + (v.days || 0), 0);
-    
-    const remaining = cycle.legalDays - usedCurrentCycle;
-    const pct = Math.min(100, (usedCurrentCycle / cycle.legalDays) * 100);
-    
+
+    // Adelantos: days taken before current cycle started but "belong" to current cycle
+    // These are days taken after prev cycle ended (i.e. from > prevCycleEnd)
+    // but this is tricky - let's count ALL days taken that aren't in prev cycles
+    // Simple approach: count days taken before cycle.start as adelantos of current cycle
+    // if they were taken after the PREVIOUS cycle ended
+    const adelantosCurrentCycle = vacations
+      .filter(v => v.userId === emp.user && v.from > prevCycleEndStr && v.from < cycle.start)
+      .reduce((sum, v) => sum + (v.days || 0), 0);
+
+    // Days used in NEXT cycle (future adelantos)
+    const adelantosNextCycle = vacations
+      .filter(v => v.userId === emp.user && v.from > cycle.end)
+      .reduce((sum, v) => sum + (v.days || 0), 0);
+
+    const totalUsed = usedCurrentCycle + adelantosCurrentCycle;
+    const remaining = cycle.legalDays - totalUsed;
+    const pct = cycle.legalDays > 0 ? Math.min(100, (totalUsed / cycle.legalDays) * 100) : 0;
+
     return `<div class="config-card" style="margin-bottom:10px;padding:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <div style="font-weight:600">${emp.name}</div>
-        <div style="font-size:13px;color:${remaining > 0 ? '#2B4EAE' : '#C41230'};font-weight:700">${remaining} días disponibles</div>
+        <div style="font-size:13px;color:${remaining > 0 ? '#2B4EAE' : remaining === 0 ? '#e8a020' : '#C41230'};font-weight:700">${remaining} día${remaining !== 1 ? 's' : ''} disponible${remaining !== 1 ? 's' : ''}</div>
       </div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${cycle.label} · Año ${cycle.year} · ${cycle.legalDays} días según LFT</div>
-      <div style="background:var(--border);border-radius:999px;height:6px;overflow:hidden">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${cycle.label} · Año ${cycle.year} · ${cycle.legalDays} días LFT</div>
+      <div style="background:var(--border);border-radius:999px;height:6px;overflow:hidden;margin-bottom:4px">
         <div style="background:${remaining > 5 ? '#2B4EAE' : remaining > 0 ? '#e8a020' : '#C41230'};height:100%;width:${pct}%;border-radius:999px;transition:width 0.3s"></div>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px">
-        <span>Usados ciclo actual: ${usedCurrentCycle}</span>
-        <span>Total legal: ${cycle.legalDays}</span>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)">
+        <span>Usados: ${totalUsed}${adelantosCurrentCycle > 0 ? ` (incl. ${adelantosCurrentCycle} adelantado${adelantosCurrentCycle>1?'s':''})` : ''}</span>
+        <span>Total: ${cycle.legalDays}</span>
       </div>
-      ${adelantos > 0 ? `<div style="font-size:11px;color:#e8a020;margin-top:4px">⚠️ ${adelantos} día${adelantos>1?'s':''} adelantados del siguiente ciclo</div>` : ''}
+      ${adelantosNextCycle > 0 ? `<div style="font-size:11px;color:#e8a020;margin-top:4px">⚠️ ${adelantosNextCycle} día${adelantosNextCycle>1?'s':''} ya tomados del siguiente ciclo</div>` : ''}
     </div>`;
   }).join('');
 }
