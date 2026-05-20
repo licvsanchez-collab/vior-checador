@@ -591,9 +591,22 @@
     <div id="tab-colaboradores" class="tab-content">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div class="section-title" style="margin-bottom:0">Equipo</div>
-        <button onclick="window.showAddCollab()" style="background:linear-gradient(135deg,#C41230,#a00e25);border:none;border-radius:10px;padding:10px 16px;color:#fff;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer">+ Agregar</button>
+        <div style="display:flex;gap:8px">
+          <button onclick="window.showInactiveCollabs()" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer">Inactivos</button>
+          <button onclick="window.showAddCollab()" style="background:linear-gradient(135deg,#C41230,#a00e25);border:none;border-radius:10px;padding:10px 16px;color:#fff;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer">+ Agregar</button>
+        </div>
       </div>
       <div id="collabList"><div class="empty-state"><div class="empty-icon">👥</div>Cargando equipo…</div></div>
+
+      <!-- Inactive collabs modal -->
+      <div id="inactiveModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:200;align-items:flex-end;justify-content:center" onclick="if(event.target.id==='inactiveModal') window.hideInactiveCollabs()">
+        <div style="background:var(--surface);border-radius:24px 24px 0 0;padding:24px;width:100%;max-width:480px;max-height:70vh;overflow-y:auto">
+          <div style="width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px"></div>
+          <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;margin-bottom:16px">Colaboradores inactivos</div>
+          <div id="inactiveList"></div>
+          <button onclick="window.hideInactiveCollabs()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:16px;cursor:pointer">Cerrar</button>
+        </div>
+      </div>
     </div>
 
     <!-- Config -->
@@ -746,6 +759,18 @@
         <input type="checkbox" id="collabOffice" style="display:none">
         <div id="officeToggleBg" style="position:absolute;inset:0;background:#ccc;border-radius:999px;transition:0.3s"></div>
         <div id="officeToggleKnob" style="position:absolute;left:3px;top:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border-radius:12px;padding:14px 16px;margin-bottom:20px">
+      <div>
+        <div style="font-size:14px;font-weight:500">✅ Colaborador activo</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Los inactivos no aparecen en el dashboard</div>
+      </div>
+      <div onclick="window.toggleActive()" style="position:relative;display:inline-block;width:46px;height:26px;cursor:pointer">
+        <input type="checkbox" id="collabActive" checked style="display:none">
+        <div id="activeToggleBg" style="position:absolute;inset:0;background:#2B4EAE;border-radius:999px;transition:0.3s"></div>
+        <div id="activeToggleKnob" style="position:absolute;left:23px;top:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>
       </div>
     </div>
 
@@ -1302,7 +1327,7 @@ function renderTodayLog() {
 function renderAdmin() {
   const today = getAllRecordsToday();
   const allEmps = COLLABS.length > 0 
-    ? COLLABS.filter(c => c.role !== 'admin') 
+    ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.active !== false) 
     : DEMO_USERS.filter(u => u.role === 'emp');
 
   let present=0, absent=0, late=0, extraMin=0;
@@ -1689,8 +1714,11 @@ async function loadCollabs() {
 async function renderCollabList() {
   const container = document.getElementById('collabList');
   if (!container) return;
-  if (!COLLABS.length) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div>Sin colaboradores aún. Agrega el primero.</div>';
+  
+  const activeCollabs = COLLABS.filter(c => c.active !== false);
+  
+  if (!activeCollabs.length) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div>Sin colaboradores activos. Agrega el primero.</div>';
     return;
   }
   // Load face registrations to show status
@@ -1700,7 +1728,7 @@ async function renderCollabList() {
     faceIds = faceSnap.docs.map(d => d.id);
   } catch(e) {}
 
-  container.innerHTML = COLLABS.map(c => {
+  container.innerHTML = activeCollabs.map(c => {
     const hasFace = faceIds.includes(c.user);
     return `<div class="emp-row">
       <div class="emp-avatar" style="background:${c.role==='admin'?'linear-gradient(135deg,#2B4EAE,#1a3a8a)':'linear-gradient(135deg,#C41230,#a00e25)'}">${c.name ? c.name[0].toUpperCase() : '?'}</div>
@@ -1726,6 +1754,8 @@ function showAddCollab() {
   document.getElementById('collabUser').disabled = false;
   const officeEl = document.getElementById('collabOffice');
   if (officeEl) { officeEl.checked = false; updateOfficeToggle(); }
+  const activeEl = document.getElementById('collabActive');
+  if (activeEl) { activeEl.checked = true; updateActiveToggle(); }
   selectRole('emp');
   document.getElementById('collabModal').classList.add('open');
 }
@@ -1742,6 +1772,8 @@ function editCollab(id) {
   document.getElementById('collabUser').disabled = true;
   const officeEl2 = document.getElementById('collabOffice');
   if (officeEl2) { officeEl2.checked = !!c.office; updateOfficeToggle(); }
+  const activeEl2 = document.getElementById('collabActive');
+  if (activeEl2) { activeEl2.checked = c.active !== false; updateActiveToggle(); }
   selectRole(c.role || 'emp');
   document.getElementById('collabModal').classList.add('open');
 }
@@ -1760,8 +1792,9 @@ async function saveCollab() {
     const role = document.getElementById('collabRole').value || 'emp';
     const saitNum = parseInt(document.getElementById('collabSaitNum').value) || null;
     const office = document.getElementById('collabOffice')?.checked || false;
+    const active = document.getElementById('collabActive')?.checked !== false;
     const hashedPinSave = await hashPin(pin);
-    const data = { name, user, pin: hashedPinSave, role, saitNum, office, createdAt: new Date().toISOString() };
+    const data = { name, user, pin: hashedPinSave, role, saitNum, office, active, createdAt: new Date().toISOString() };
     const docId = editId || user;
     await setDoc(doc(db, 'users', docId), data);
     document.getElementById('collabModal').classList.remove('open');
@@ -1803,6 +1836,64 @@ function toggleOffice() {
   if (!cb) return;
   cb.checked = !cb.checked;
   updateOfficeToggle();
+}
+
+function toggleActive() {
+  const cb = document.getElementById('collabActive');
+  if (!cb) return;
+  cb.checked = !cb.checked;
+  updateActiveToggle();
+}
+
+function updateActiveToggle() {
+  const cb = document.getElementById('collabActive');
+  const bg = document.getElementById('activeToggleBg');
+  const knob = document.getElementById('activeToggleKnob');
+  if (!cb || !bg || !knob) return;
+  if (cb.checked) {
+    bg.style.background = '#2B4EAE';
+    knob.style.left = '23px';
+  } else {
+    bg.style.background = '#ccc';
+    knob.style.left = '3px';
+  }
+}
+
+async function showInactiveCollabs() {
+  const inactiveCollabs = COLLABS.filter(c => c.active === false);
+  const modal = document.getElementById('inactiveModal');
+  const list = document.getElementById('inactiveList');
+  if (!modal || !list) return;
+  
+  if (!inactiveCollabs.length) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div>Sin colaboradores inactivos</div>';
+  } else {
+    list.innerHTML = inactiveCollabs.map(c => `
+      <div class="emp-row" style="margin-bottom:10px">
+        <div class="emp-avatar" style="background:linear-gradient(135deg,#6B7B8D,#4a5568);opacity:0.7">${c.name[0]}</div>
+        <div class="emp-info">
+          <div class="emp-name" style="color:var(--muted)">${c.name}</div>
+          <div class="emp-detail">@${c.user} · <span style="color:#e8a020">Inactivo</span></div>
+        </div>
+        <button onclick="window.reactivateCollab('${c.id}')" style="background:rgba(43,78,174,0.1);border:1px solid rgba(43,78,174,0.2);border-radius:8px;padding:6px 12px;color:#2B4EAE;font-size:12px;cursor:pointer">Activar</button>
+      </div>`).join('');
+  }
+  modal.style.display = 'flex';
+}
+
+function hideInactiveCollabs() {
+  document.getElementById('inactiveModal').style.display = 'none';
+}
+
+async function reactivateCollab(id) {
+  try {
+    await setDoc(doc(db, 'users', id), { active: true }, { merge: true });
+    await loadCollabs();
+    hideInactiveCollabs();
+    showToast('✅ Colaborador reactivado', 'success');
+  } catch(e) {
+    showToast('⚠️ Error al reactivar', 'error');
+  }
 }
 
 function selectRole(role) {
@@ -1944,7 +2035,7 @@ async function loadNomina() {
     const q = query(collection(db, 'records'), where('date', '>=', from), where('date', '<=', to));
     const snap = await getDocs(q);
     NOMINA_RECORDS = snap.docs.map(d => d.data());
-    NOMINA_EMPS = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller');
+    NOMINA_EMPS = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.active !== false);
     renderNomina(from, to);
     document.getElementById('nominaContent').style.display = 'block';
     showToast('✅ Incidencias cargadas', 'success');
@@ -2858,6 +2949,11 @@ window.showAddCollab = showAddCollab;
 window.selectRole = selectRole;
 window.updateOfficeToggle = updateOfficeToggle;
 window.toggleOffice = toggleOffice;
+window.toggleActive = toggleActive;
+window.updateActiveToggle = updateActiveToggle;
+window.showInactiveCollabs = showInactiveCollabs;
+window.hideInactiveCollabs = hideInactiveCollabs;
+window.reactivateCollab = reactivateCollab;
 window.editCollab = editCollab;
 window.saveCollab = saveCollab;
 window.deleteCollab = deleteCollab;
