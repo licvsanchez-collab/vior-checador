@@ -2949,6 +2949,56 @@ async function isVacationDay(userId, dateStr) {
   } catch(e) { return false; }
 }
 
+// ════════════════════════════════
+//  REPORT EXPORTS
+// ════════════════════════════════
+function exportRangeCSV() { exportIncidencesCSV(); }
+
+function exportIncidencesCSV() {
+  if (!REPORT_RECORDS.length) { showToast('Genera un reporte primero', 'warn'); return; }
+  const emps = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.active !== false) : DEMO_USERS.filter(u => u.role === 'emp');
+  const from = document.getElementById('rptFrom').value;
+  const to   = document.getElementById('rptTo').value;
+
+  const dates = [];
+  let cur = new Date(from + 'T12:00:00');
+  const end = new Date(to + 'T12:00:00');
+  const workDaysExp = CONFIG.workDays || [1,2,3,4,5];
+  while (cur <= end) {
+    const d = dateToStr(cur);
+    if (workDaysExp.includes(cur.getDay()) && !isHoliday(d)) dates.push(d);
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  const rows = [['Colaborador','Fecha','Entrada','Salida','Retardo','Horas Trabajadas','Horas Extra','Incidencia']];
+  
+  emps.forEach(emp => {
+    dates.forEach(date => {
+      const recs = REPORT_RECORDS.filter(r => r.userId === emp.user && r.date === date);
+      const entry = recs.find(r => r.type === 'entry');
+      const exit  = recs.find(r => r.type === 'exit');
+      const isVac = window.REPORT_VACATIONS?.some(v => v.userId === emp.user && date >= v.from && date <= v.to);
+      const incidencia = isVac ? 'VACACIONES' : !entry ? 'FALTA' : entry.late > 0 ? 'RETARDO' : 'ASISTENCIA';
+      rows.push([emp.name, date, entry?.time||'—', exit?.time||'—',
+        entry?.late ? entry.late+'min' : '',
+        exit?.workedMin ? fmtMin(exit.workedMin) : '',
+        exit?.extraMin ? fmtMin(exit.extraMin) : '',
+        incidencia]);
+    });
+    rows.push(['','','','','','','','']);
+  });
+
+  const csv = '\uFEFF' + rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `incidencias_${from}_${to}.csv`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast('📊 Reporte descargado', 'success');
+}
+
 // Enter key en login
 // ════════════════════════════════
 //  EXPOSE TO WINDOW (required for type="module")
@@ -2996,6 +3046,8 @@ window.cancelMobileFacial = cancelMobileFacial;
 window.toggleBiometric = toggleBiometric;
 window.updateBiometricToggle = updateBiometricToggle;
 window.closeModal = closeModal;
+window.exportRangeCSV = exportRangeCSV;
+window.exportIncidencesCSV = exportIncidencesCSV;
 window.captureFace = captureFace;
 window.startFacialScan = startFacialScan;
 window.facialLogoTap = facialLogoTap;
