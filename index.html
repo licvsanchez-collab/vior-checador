@@ -1430,8 +1430,7 @@ function renderAdmin() {
         <div class="emp-detail">${entry?'Entró: '+entry.time:'Sin registro'}${exit?' · Salió: '+exit.time:''}</div>
       </div>
       <div class="emp-badge ${badgeClass}">${badge}</div>
-    </div>`;
-  }).join('');
+    </div>`).join('');
 
   document.getElementById('statPresent').textContent = present;
   document.getElementById('statAbsent').textContent = absent;
@@ -1446,23 +1445,19 @@ function renderAdmin() {
     if (r.type === 'entry') empGroups[r.userId].entry = r;
     else empGroups[r.userId].exit = r;
   });
-  const empGroupsHTML = Object.values(empGroups).map(g => {
-    const entryId = g.entry?.id || '';
-    const exitId = g.exit?.id || '';
-    return `<div class="emp-row" style="flex-direction:column;align-items:stretch;gap:8px">
+  const empGroupsHTML = Object.values(empGroups).map(g => `
+    <div class="emp-row" style="flex-direction:column;align-items:stretch;gap:8px">
       <div style="font-weight:600;font-size:15px;color:#1a1f2e">👤 ${g.name}</div>
       <div style="display:flex;gap:8px">
         <div style="flex:1;background:var(--surface2);border-radius:10px;padding:10px">
           <div style="font-size:12px;color:var(--muted)">Entrada</div>
           <div style="font-family:'Syne',sans-serif;font-weight:700;color:#1a1f2e">${g.entry?.time || '—'}</div>
           ${g.entry?.late > 0 ? `<div style="font-size:11px;color:#e8a020">⚠️ ${g.entry.late}min retardo</div>` : ''}
-          ${entryId ? `<button onclick="window.deleteRecord('${entryId}')" style="margin-top:4px;background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:6px;padding:2px 8px;color:#C41230;font-size:11px;cursor:pointer">✕ Borrar</button>` : ''}
         </div>
         <div style="flex:1;background:var(--surface2);border-radius:10px;padding:10px">
           <div style="font-size:12px;color:var(--muted)">Salida</div>
           <div style="font-family:'Syne',sans-serif;font-weight:700;color:#C41230">${g.exit?.time || '—'}</div>
           ${g.exit?.extraMin > 0 ? `<div style="font-size:11px;color:#2B4EAE">+${fmtMin(g.exit.extraMin)} extra</div>` : ''}
-          ${exitId ? `<button onclick="window.deleteRecord('${exitId}')" style="margin-top:4px;background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:6px;padding:2px 8px;color:#C41230;font-size:11px;cursor:pointer">✕ Borrar</button>` : ''}
         </div>
         <div style="flex:1;background:var(--surface2);border-radius:10px;padding:10px">
           <div style="font-size:12px;color:var(--muted)">Trabajado</div>
