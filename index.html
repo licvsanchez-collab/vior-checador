@@ -2160,8 +2160,8 @@ function renderNomina(from, to) {
       <td style="padding:10px;text-align:center;border-bottom:1px solid var(--border);color:#C41230;font-weight:600">${absent}</td>
       <td style="padding:10px;text-align:center;border-bottom:1px solid var(--border);color:#e8a020;font-weight:600">${late}</td>
       <td style="padding:10px;text-align:center;border-bottom:1px solid var(--border);color:#6366f1;font-weight:600">${(extraMin/60).toFixed(2)}</td>
-    </tr>`;
-  });
+    </tr>`);
+  
   tableHTML += '</tbody></table>';
   document.getElementById('nominaTable').innerHTML = tableHTML;
   const nominaVarEl = document.getElementById('nominaVariables');
@@ -3154,8 +3154,8 @@ function renderReportDashboard(from, to) {
           <div style="font-size:11px;color:var(--muted)">H. Extra</div>
         </div>
       </div>
-    </div>`;
-  });
+    </div>`);
+  
   const el = id => document.getElementById(id);
   if(el('rptPresent')) el('rptPresent').textContent = totalPresent;
   if(el('rptAbsent')) el('rptAbsent').textContent = totalAbsent;
