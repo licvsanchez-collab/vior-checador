@@ -1446,19 +1446,23 @@ function renderAdmin() {
     if (r.type === 'entry') empGroups[r.userId].entry = r;
     else empGroups[r.userId].exit = r;
   });
-  const empGroupsHTML = Object.values(empGroups).map(g => `
-    <div class="emp-row" style="flex-direction:column;align-items:stretch;gap:8px">
+  const empGroupsHTML = Object.values(empGroups).map(g => {
+    const entryId = g.entry?.id || '';
+    const exitId = g.exit?.id || '';
+    return `<div class="emp-row" style="flex-direction:column;align-items:stretch;gap:8px">
       <div style="font-weight:600;font-size:15px;color:#1a1f2e">👤 ${g.name}</div>
       <div style="display:flex;gap:8px">
         <div style="flex:1;background:var(--surface2);border-radius:10px;padding:10px">
           <div style="font-size:12px;color:var(--muted)">Entrada</div>
           <div style="font-family:'Syne',sans-serif;font-weight:700;color:#1a1f2e">${g.entry?.time || '—'}</div>
           ${g.entry?.late > 0 ? `<div style="font-size:11px;color:#e8a020">⚠️ ${g.entry.late}min retardo</div>` : ''}
+          ${entryId ? `<button onclick="window.deleteRecord('${entryId}')" style="margin-top:4px;background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:6px;padding:2px 8px;color:#C41230;font-size:11px;cursor:pointer">✕ Borrar</button>` : ''}
         </div>
         <div style="flex:1;background:var(--surface2);border-radius:10px;padding:10px">
           <div style="font-size:12px;color:var(--muted)">Salida</div>
           <div style="font-family:'Syne',sans-serif;font-weight:700;color:#C41230">${g.exit?.time || '—'}</div>
           ${g.exit?.extraMin > 0 ? `<div style="font-size:11px;color:#2B4EAE">+${fmtMin(g.exit.extraMin)} extra</div>` : ''}
+          ${exitId ? `<button onclick="window.deleteRecord('${exitId}')" style="margin-top:4px;background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:6px;padding:2px 8px;color:#C41230;font-size:11px;cursor:pointer">✕ Borrar</button>` : ''}
         </div>
         <div style="flex:1;background:var(--surface2);border-radius:10px;padding:10px">
           <div style="font-size:12px;color:var(--muted)">Trabajado</div>
@@ -1466,8 +1470,8 @@ function renderAdmin() {
         </div>
       </div>
       ${(g.entry?.manual || g.exit?.manual) ? '<div style="font-size:11px;color:#e8a020;margin-top:4px">✏️ Contiene registro manual</div>' : ''}
-      </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   const empLogEl = document.getElementById('empLogList'); if(empLogEl) empLogEl.innerHTML = Object.keys(empGroups).length ? empGroupsHTML : '<div class="empty-state"><div class="empty-icon">📭</div>Sin registros hoy</div>';
 
   // History tab (optional - only update if element exists)
@@ -3278,6 +3282,23 @@ async function captureAndSavePhoto(userId, videoElement) {
   }
 }
 
+// ════════════════════════════════
+//  DELETE RECORD
+// ════════════════════════════════
+async function deleteRecord(recordId) {
+  if (!recordId) return;
+  if (!confirm('¿Eliminar este registro? Esta acción no se puede deshacer.')) return;
+  try {
+    const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    await deleteDoc(doc(db, 'records', String(recordId)));
+    await loadRecordsFromDB();
+    renderAdmin();
+    showToast('✅ Registro eliminado', 'success');
+  } catch(e) {
+    showToast('⚠️ Error al eliminar: ' + e.message, 'error');
+  }
+}
+
 // Enter key en login
 // ════════════════════════════════
 //  EXPOSE TO WINDOW (required for type="module")
@@ -3321,6 +3342,7 @@ window.exportSAIT = exportSAIT;
 window.openManualModal = openManualModal;
 window.selectManualType = selectManualType;
 window.saveManualRecord = saveManualRecord;
+window.deleteRecord = deleteRecord;
 window.closeManualModal = closeManualModal;
 window.showEmpDetail = showEmpDetail;
 window.startMobileFacialScan = startMobileFacialScan;
