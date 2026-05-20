@@ -1180,6 +1180,7 @@ async function showAdmin() {
   await loadCollabs();
   await loadRecordsFromDB();
   await loadTodayVacations();
+  await loadEmpPhotos();
   renderAdmin();
   // Set default report dates
   const today = todayStr();
@@ -1383,6 +1384,17 @@ async function loadTodayVacations() {
   } catch(e) { VACATION_DAYS_TODAY = []; }
 }
 
+let EMP_PHOTOS = {}; // Cache of employee photos
+
+async function loadEmpPhotos() {
+  try {
+    const snap = await getDocs(collection(db, 'faces'));
+    snap.docs.forEach(d => {
+      if (d.data().photoURL) EMP_PHOTOS[d.id] = d.data().photoURL;
+    });
+  } catch(e) {}
+}
+
 function renderAdmin() {
   const today = getAllRecordsToday();
   const allEmps = COLLABS.length > 0 
@@ -1412,7 +1424,7 @@ function renderAdmin() {
     if (exit?.extraMin) extraMin += exit.extraMin;
 
     return `<div class="emp-row" onclick="showEmpDetail('${emp.user}')">
-      <div class="emp-avatar">${emp.name[0]}</div>
+      <div class="emp-avatar" style="overflow:hidden;padding:0">${EMP_PHOTOS[emp.user] ? '<img src="' + EMP_PHOTOS[emp.user] + '" style="width:100%;height:100%;object-fit:cover;border-radius:12px">' : emp.name[0]}</div>
       <div class="emp-info">
         <div class="emp-name">${emp.name}</div>
         <div class="emp-detail">${entry?'Entró: '+entry.time:'Sin registro'}${exit?' · Salió: '+exit.time:''}</div>
@@ -2307,11 +2319,21 @@ async function captureFace() {
       return;
     }
 
-    // Save descriptor to Firebase
+    // Capture photo from video
+    const photoCanvas = document.createElement('canvas');
+    photoCanvas.width = 120; photoCanvas.height = 120;
+    const pctx = photoCanvas.getContext('2d');
+    const video = document.getElementById('enrollVideo');
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const size = Math.min(vw, vh);
+    pctx.drawImage(video, (vw-size)/2, (vh-size)/2, size, size, 0, 0, 120, 120);
+    const photoURL = photoCanvas.toDataURL('image/jpeg', 0.7);
+
+    // Save descriptor and photo to Firebase
     const descriptor = Array.from(detection.descriptor);
     await setDoc(doc(db, 'faces', userId), {
       userId, name: emp.name,
-      descriptor,
+      descriptor, photoURL,
       enrolledAt: new Date().toISOString(),
       enrolledBy: currentUser.name
     });
@@ -2527,6 +2549,9 @@ async function scanForFace() {
       return;
     }
 
+    // Capture photo if not yet saved
+    captureAndSavePhoto(bestMatch.userId, video);
+
     // Match found — register check
     clearInterval(facialScanInterval);
     await registerFacialCheck(bestMatch);
@@ -2729,6 +2754,9 @@ async function startMobileFacialScan() {
 
       scanning = false;
       document.getElementById('mobileScanStatus').textContent = `✅ ${bestMatch.name}`;
+
+      // Capture photo if not yet saved
+      captureAndSavePhoto(bestMatch.userId, video);
 
       // Register check
       setTimeout(async () => {
@@ -3217,6 +3245,39 @@ function exportIncidencesCSV() {
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   showToast('📊 Reporte descargado', 'success');
+}
+
+// ════════════════════════════════
+//  PHOTO CAPTURE
+// ════════════════════════════════
+async function captureAndSavePhoto(userId, videoElement) {
+  try {
+    // Check if user already has a photo
+    const existing = await getDoc(doc(db, 'faces', userId));
+    if (existing.exists() && existing.data().photoURL) return; // Already has photo
+
+    // Capture frame from video
+    const canvas = document.createElement('canvas');
+    canvas.width = 120;
+    canvas.height = 120;
+    const ctx = canvas.getContext('2d');
+    
+    // Crop center square from video
+    const vw = videoElement.videoWidth;
+    const vh = videoElement.videoHeight;
+    const size = Math.min(vw, vh);
+    const sx = (vw - size) / 2;
+    const sy = (vh - size) / 2;
+    ctx.drawImage(videoElement, sx, sy, size, size, 0, 0, 120, 120);
+    
+    const photoURL = canvas.toDataURL('image/jpeg', 0.7);
+    
+    // Save to Firebase faces collection
+    await setDoc(doc(db, 'faces', userId), { photoURL }, { merge: true });
+    console.log('Photo saved for', userId);
+  } catch(e) {
+    console.log('Photo capture error:', e);
+  }
 }
 
 // Enter key en login
