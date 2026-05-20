@@ -468,6 +468,7 @@
     <div class="tab" onclick="switchTab('empleados')">Empleados</div>
     <div class="tab" onclick="switchTab('reportes')">Reportes</div>
     <div class="tab" onclick="switchTab('colaboradores')">Equipo</div>
+    <div class="tab" onclick="switchTab('vacaciones')">Vacaciones</div>
     <div class="tab" onclick="switchTab('nomina')">Nómina</div>
     <div class="tab" onclick="switchTab('config')">Config</div>
   </div>
@@ -552,6 +553,35 @@
         <div class="section-title" style="margin-top:8px">Registros del periodo</div>
         <div id="rptRecordsList"></div>
       </div>
+    </div>
+
+    <!-- Vacaciones -->
+    <div id="tab-vacaciones" class="tab-content">
+      <div class="config-card" style="margin-bottom:16px">
+        <div class="config-title">🏖️ Registrar vacaciones</div>
+        <div class="field-label">Colaborador</div>
+        <select class="field-input" id="vacEmp" style="background:var(--surface2);cursor:pointer">
+          <option value="">Selecciona colaborador...</option>
+        </select>
+        <div class="config-row" style="margin-top:12px">
+          <div class="config-label">Desde</div>
+          <input class="config-input" id="vacFrom" type="date">
+        </div>
+        <div class="config-row">
+          <div class="config-label">Hasta</div>
+          <input class="config-input" id="vacTo" type="date">
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin:8px 0">Para un solo día, pon la misma fecha en ambos campos.</div>
+        <button class="save-btn" onclick="window.saveVacation()" style="margin-top:8px">✅ Registrar vacaciones</button>
+      </div>
+
+      <!-- Vacation days remaining per employee -->
+      <div class="section-title">Días de vacaciones por colaborador</div>
+      <div id="vacSummary" style="margin-bottom:16px"></div>
+
+      <!-- Registered vacations list -->
+      <div class="section-title">Vacaciones registradas</div>
+      <div id="vacList"></div>
     </div>
 
     <!-- Nómina -->
@@ -993,14 +1023,14 @@ function startRealtimeListener() {
   const q = query(collection(db, 'records'), where('date', '==', todayStr()));
   unsubscribe = onSnapshot(q, snap => {
     RECORDS = snap.docs.map(d => d.data());
-    if (currentUser?.role === 'admin') renderAdmin();
+    if (currentUser?.role === 'admin') { loadTodayVacations().then(renderAdmin); }
     else if (currentUser?.role === 'emp') { renderTodayLog(); updateButtons(); }
   }, async err => {
     console.log('Listener error:', err);
     // Fallback: load records manually if listener fails
     try {
       await loadRecordsFromDB();
-      if (currentUser?.role === 'admin') renderAdmin();
+      if (currentUser?.role === 'admin') { loadTodayVacations().then(renderAdmin); }
       else if (currentUser?.role === 'emp') { renderTodayLog(); updateButtons(); }
     } catch(e) { console.log('Fallback load error:', e); }
   });
@@ -1137,6 +1167,7 @@ async function showAdmin() {
   loadConfig();
   await loadCollabs();
   await loadRecordsFromDB();
+  await loadTodayVacations();
   renderAdmin();
   // Set default report dates
   const today = todayStr();
@@ -1327,6 +1358,19 @@ function renderTodayLog() {
 // ════════════════════════════════
 //  ADMIN RENDER
 // ════════════════════════════════
+let VACATION_DAYS_TODAY = [];
+
+async function loadTodayVacations() {
+  try {
+    const snap = await getDocs(collection(db, 'vacations'));
+    const today = todayStr();
+    VACATION_DAYS_TODAY = snap.docs
+      .map(d => d.data())
+      .filter(v => today >= v.from && today <= v.to)
+      .map(v => v.userId);
+  } catch(e) { VACATION_DAYS_TODAY = []; }
+}
+
 function renderAdmin() {
   const today = getAllRecordsToday();
   const allEmps = COLLABS.length > 0 
@@ -1348,6 +1392,8 @@ function renderAdmin() {
     if (!isTodayWorkday && !entry) {
       badge = isHoliday(todayStr()) ? 'Festivo' : 'Descanso';
       badgeClass='badge-out';
+    } else if (!entry && VACATION_DAYS_TODAY.includes(emp.user)) {
+      badge='Vacaciones'; badgeClass='badge-out';
     } else if (!entry) { absent++; badge='Falta'; badgeClass='badge-absent'; }
     else if (entry.late > 0) { present++; late++; badge='Retardo'; badgeClass='badge-late'; }
     else { present++; badge='Presente'; badgeClass='badge-in'; }
@@ -1443,6 +1489,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   if (name === 'colaboradores') loadCollabs();
+  else if (name === 'vacaciones') { if (!COLLABS.length) loadCollabs().then(loadVacaciones); else loadVacaciones(); }
   else if (name === 'nomina') {
     // Set default to last week
     const now = new Date();
@@ -2072,7 +2119,9 @@ function renderNomina(from, to) {
       const recs = NOMINA_RECORDS.filter(r => r.userId === emp.user && r.date === date);
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
-      if (!entry) absent++;
+      const isVacDay = window.REPORT_VACATIONS?.some(v => v.userId === emp.user && date >= v.from && date <= v.to);
+      if (!entry && isVacDay) { /* vacation - not counted as absent */ }
+      else if (!entry) absent++;
       else { worked++; if (entry.late > 0) late++; if (exit?.extraMin) extraMin += exit.extraMin; }
     });
     tableHTML += `<tr>
@@ -2694,6 +2743,207 @@ function cancelMobileFacial() {
   }
 }
 
+// ════════════════════════════════
+//  VACACIONES
+// ════════════════════════════════
+
+function getLFTDays(yearsOfService) {
+  // LFT 2023 table
+  if (yearsOfService < 1) return 12;
+  if (yearsOfService === 1) return 12;
+  if (yearsOfService === 2) return 14;
+  if (yearsOfService === 3) return 16;
+  if (yearsOfService === 4) return 18;
+  if (yearsOfService >= 5 && yearsOfService <= 9) return 20;
+  if (yearsOfService >= 10 && yearsOfService <= 14) return 22;
+  if (yearsOfService >= 15 && yearsOfService <= 19) return 24;
+  if (yearsOfService >= 20 && yearsOfService <= 24) return 26;
+  if (yearsOfService >= 25 && yearsOfService <= 29) return 28;
+  return 30;
+}
+
+function getCurrentCycle(hireDate) {
+  // Returns current vacation cycle start and end dates based on anniversary
+  if (!hireDate) return null;
+  const hire = new Date(hireDate + 'T12:00:00');
+  const now = new Date();
+  
+  // Find current cycle start (most recent anniversary)
+  let cycleStart = new Date(hire);
+  cycleStart.setFullYear(now.getFullYear());
+  if (cycleStart > now) cycleStart.setFullYear(now.getFullYear() - 1);
+  
+  // Cycle end is one day before next anniversary
+  let cycleEnd = new Date(cycleStart);
+  cycleEnd.setFullYear(cycleStart.getFullYear() + 1);
+  cycleEnd.setDate(cycleEnd.getDate() - 1);
+  
+  // Years of service at start of this cycle
+  const yearsAtCycleStart = cycleStart.getFullYear() - hire.getFullYear();
+  
+  return {
+    start: dateToStr(cycleStart),
+    end: dateToStr(cycleEnd),
+    year: yearsAtCycleStart,
+    legalDays: getLFTDays(yearsAtCycleStart),
+    label: `Ciclo ${dateToStr(cycleStart)} → ${dateToStr(cycleEnd)}`
+  };
+}
+
+function getLegalVacationDays(hireDate) {
+  if (!hireDate) return 12;
+  const cycle = getCurrentCycle(hireDate);
+  return cycle ? cycle.legalDays : 12;
+}
+
+async function loadVacaciones() {
+  // Populate employee dropdown
+  const sel = document.getElementById('vacEmp');
+  if (sel) {
+    sel.innerHTML = '<option value="">Selecciona colaborador...</option>';
+    const emps = COLLABS.filter(c => c.role === 'emp' && c.active !== false);
+    emps.forEach(emp => {
+      const opt = document.createElement('option');
+      opt.value = emp.user;
+      opt.textContent = emp.name;
+      sel.appendChild(opt);
+    });
+  }
+
+  // Load all vacations from Firebase
+  try {
+    const snap = await getDocs(collection(db, 'vacations'));
+    const vacations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderVacSummary(vacations);
+    renderVacList(vacations);
+  } catch(e) {
+    console.log('loadVacaciones error', e);
+  }
+}
+
+function getWorkingDaysBetween(from, to) {
+  const workDays = CONFIG.workDays || [1,2,3,4,5];
+  let count = 0;
+  let cur = new Date(from + 'T12:00:00');
+  const end = new Date(to + 'T12:00:00');
+  while (cur <= end) {
+    const d = dateToStr(cur);
+    if (workDays.includes(cur.getDay()) && !isHoliday(d)) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+}
+
+function renderVacSummary(vacations) {
+  const container = document.getElementById('vacSummary');
+  if (!container) return;
+  const emps = COLLABS.filter(c => c.role === 'emp' && c.active !== false);
+  if (!emps.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div>Sin colaboradores activos</div>'; return; }
+
+  container.innerHTML = emps.map(emp => {
+    const cycle = getCurrentCycle(emp.hireDate);
+    if (!cycle) return '';
+    
+    // Days used in current cycle
+    const currentCycleVacs = vacations.filter(v => 
+      v.userId === emp.user && v.from >= cycle.start && v.from <= cycle.end
+    );
+    const usedCurrentCycle = currentCycleVacs.reduce((sum, v) => sum + (v.days || 0), 0);
+    
+    // Days used in next cycle (adelantos)
+    const nextCycleStart = new Date(cycle.end + 'T12:00:00');
+    nextCycleStart.setDate(nextCycleStart.getDate() + 1);
+    const nextCycleStartStr = dateToStr(nextCycleStart);
+    const adelantos = vacations.filter(v => v.userId === emp.user && v.from > cycle.end)
+      .reduce((sum, v) => sum + (v.days || 0), 0);
+    
+    const remaining = cycle.legalDays - usedCurrentCycle;
+    const pct = Math.min(100, (usedCurrentCycle / cycle.legalDays) * 100);
+    
+    return `<div class="config-card" style="margin-bottom:10px;padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <div style="font-weight:600">${emp.name}</div>
+        <div style="font-size:13px;color:${remaining > 0 ? '#2B4EAE' : '#C41230'};font-weight:700">${remaining} días disponibles</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${cycle.label} · Año ${cycle.year} · ${cycle.legalDays} días según LFT</div>
+      <div style="background:var(--border);border-radius:999px;height:6px;overflow:hidden">
+        <div style="background:${remaining > 5 ? '#2B4EAE' : remaining > 0 ? '#e8a020' : '#C41230'};height:100%;width:${pct}%;border-radius:999px;transition:width 0.3s"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px">
+        <span>Usados ciclo actual: ${usedCurrentCycle}</span>
+        <span>Total legal: ${cycle.legalDays}</span>
+      </div>
+      ${adelantos > 0 ? `<div style="font-size:11px;color:#e8a020;margin-top:4px">⚠️ ${adelantos} día${adelantos>1?'s':''} adelantados del siguiente ciclo</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderVacList(vacations) {
+  const container = document.getElementById('vacList');
+  if (!container) return;
+  if (!vacations.length) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">🏖️</div>Sin vacaciones registradas</div>';
+    return;
+  }
+  const sorted = [...vacations].sort((a,b) => b.from?.localeCompare(a.from));
+  container.innerHTML = sorted.map(v => `
+    <div class="log-entry" style="margin-bottom:8px">
+      <div>
+        <div style="font-weight:500">${v.empName}</div>
+        <div style="font-size:12px;color:var(--muted)">${formatDateMx(v.from)}${v.from !== v.to ? ' → ' + formatDateMx(v.to) : ''} · ${v.days} día${v.days !== 1 ? 's' : ''}</div>
+      </div>
+      <button onclick="window.deleteVacation('${v.id}')" style="background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:8px;padding:5px 10px;color:#C41230;font-size:12px;cursor:pointer">✕</button>
+    </div>`).join('');
+}
+
+async function saveVacation() {
+  const userId = document.getElementById('vacEmp').value;
+  const from = document.getElementById('vacFrom').value;
+  const to = document.getElementById('vacTo').value;
+  if (!userId || !from || !to) { showToast('Completa todos los campos', 'error'); return; }
+  if (from > to) { showToast('La fecha inicial debe ser menor a la final', 'error'); return; }
+
+  const emp = COLLABS.find(c => c.user === userId);
+  if (!emp) return;
+
+  const days = getWorkingDaysBetween(from, to);
+  if (days === 0) { showToast('No hay días hábiles en ese rango', 'warn'); return; }
+
+  try {
+    const vacId = `${userId}_${from}_${to}`;
+    await setDoc(doc(db, 'vacations', vacId), {
+      userId, empName: emp.name, from, to, days,
+      registeredBy: currentUser.name,
+      createdAt: new Date().toISOString()
+    });
+    document.getElementById('vacFrom').value = '';
+    document.getElementById('vacTo').value = '';
+    document.getElementById('vacEmp').value = '';
+    await loadVacaciones();
+    showToast(`✅ ${days} día${days !== 1 ? 's' : ''} de vacaciones registrados`, 'success');
+  } catch(e) {
+    showToast('⚠️ Error: ' + e.message, 'error');
+  }
+}
+
+async function deleteVacation(id) {
+  if (!confirm('¿Eliminar este período de vacaciones?')) return;
+  try {
+    const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    await deleteDoc(doc(db, 'vacations', id));
+    await loadVacaciones();
+    showToast('✅ Vacaciones eliminadas', 'success');
+  } catch(e) { showToast('⚠️ Error al eliminar', 'error'); }
+}
+
+async function isVacationDay(userId, dateStr) {
+  try {
+    const snap = await getDocs(collection(db, 'vacations'));
+    const vacations = snap.docs.map(d => d.data());
+    return vacations.some(v => v.userId === userId && dateStr >= v.from && dateStr <= v.to);
+  } catch(e) { return false; }
+}
+
 // Enter key en login
 document.getElementById('loginPin').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 
@@ -2759,6 +3009,11 @@ async function generateReport() {
     // Load collabs if not yet loaded
     if (!COLLABS.length) await loadCollabs();
     
+    // Load vacations for this period
+    const vacSnap = await getDocs(collection(db, 'vacations'));
+    window.REPORT_VACATIONS = vacSnap.docs.map(d => d.data())
+      .filter(v => v.from <= to && v.to >= from);
+    
     const q = query(collection(db, 'records'),
       where('date', '>=', from),
       where('date', '<=', to)
@@ -2795,7 +3050,9 @@ function renderReportDashboard(from, to) {
       const recs = REPORT_RECORDS.filter(r => r.userId === emp.user && r.date === date);
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
-      if (!entry) absent++;
+      const isVacDay = window.REPORT_VACATIONS?.some(v => v.userId === emp.user && date >= v.from && date <= v.to);
+      if (!entry && isVacDay) { /* vacation - not counted as absent */ }
+      else if (!entry) absent++;
       else {
         present++;
         if (entry.late > 0) late++;
@@ -2916,7 +3173,8 @@ function exportIncidencesCSV() {
       const recs = REPORT_RECORDS.filter(r => r.userId === emp.user && r.date === date);
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
-      const incidencia = !entry ? 'FALTA' : entry.late > 0 ? 'RETARDO' : 'ASISTENCIA';
+      const isVac = REPORT_VACATIONS?.some(v => v.userId === emp.user && date >= v.from && date <= v.to);
+      const incidencia = isVac ? 'VACACIONES' : !entry ? 'FALTA' : entry.late > 0 ? 'RETARDO' : 'ASISTENCIA';
       rows.push([emp.name, date, entry?.time||'—', exit?.time||'—',
         entry?.late ? entry.late+'min' : '',
         exit?.workedMin ? fmtMin(exit.workedMin) : '',
@@ -2931,6 +3189,207 @@ function exportIncidencesCSV() {
 
 
 
+
+// ════════════════════════════════
+//  VACACIONES
+// ════════════════════════════════
+
+function getLFTDays(yearsOfService) {
+  // LFT 2023 table
+  if (yearsOfService < 1) return 12;
+  if (yearsOfService === 1) return 12;
+  if (yearsOfService === 2) return 14;
+  if (yearsOfService === 3) return 16;
+  if (yearsOfService === 4) return 18;
+  if (yearsOfService >= 5 && yearsOfService <= 9) return 20;
+  if (yearsOfService >= 10 && yearsOfService <= 14) return 22;
+  if (yearsOfService >= 15 && yearsOfService <= 19) return 24;
+  if (yearsOfService >= 20 && yearsOfService <= 24) return 26;
+  if (yearsOfService >= 25 && yearsOfService <= 29) return 28;
+  return 30;
+}
+
+function getCurrentCycle(hireDate) {
+  // Returns current vacation cycle start and end dates based on anniversary
+  if (!hireDate) return null;
+  const hire = new Date(hireDate + 'T12:00:00');
+  const now = new Date();
+  
+  // Find current cycle start (most recent anniversary)
+  let cycleStart = new Date(hire);
+  cycleStart.setFullYear(now.getFullYear());
+  if (cycleStart > now) cycleStart.setFullYear(now.getFullYear() - 1);
+  
+  // Cycle end is one day before next anniversary
+  let cycleEnd = new Date(cycleStart);
+  cycleEnd.setFullYear(cycleStart.getFullYear() + 1);
+  cycleEnd.setDate(cycleEnd.getDate() - 1);
+  
+  // Years of service at start of this cycle
+  const yearsAtCycleStart = cycleStart.getFullYear() - hire.getFullYear();
+  
+  return {
+    start: dateToStr(cycleStart),
+    end: dateToStr(cycleEnd),
+    year: yearsAtCycleStart,
+    legalDays: getLFTDays(yearsAtCycleStart),
+    label: `Ciclo ${dateToStr(cycleStart)} → ${dateToStr(cycleEnd)}`
+  };
+}
+
+function getLegalVacationDays(hireDate) {
+  if (!hireDate) return 12;
+  const cycle = getCurrentCycle(hireDate);
+  return cycle ? cycle.legalDays : 12;
+}
+
+async function loadVacaciones() {
+  // Populate employee dropdown
+  const sel = document.getElementById('vacEmp');
+  if (sel) {
+    sel.innerHTML = '<option value="">Selecciona colaborador...</option>';
+    const emps = COLLABS.filter(c => c.role === 'emp' && c.active !== false);
+    emps.forEach(emp => {
+      const opt = document.createElement('option');
+      opt.value = emp.user;
+      opt.textContent = emp.name;
+      sel.appendChild(opt);
+    });
+  }
+
+  // Load all vacations from Firebase
+  try {
+    const snap = await getDocs(collection(db, 'vacations'));
+    const vacations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderVacSummary(vacations);
+    renderVacList(vacations);
+  } catch(e) {
+    console.log('loadVacaciones error', e);
+  }
+}
+
+function getWorkingDaysBetween(from, to) {
+  const workDays = CONFIG.workDays || [1,2,3,4,5];
+  let count = 0;
+  let cur = new Date(from + 'T12:00:00');
+  const end = new Date(to + 'T12:00:00');
+  while (cur <= end) {
+    const d = dateToStr(cur);
+    if (workDays.includes(cur.getDay()) && !isHoliday(d)) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+}
+
+function renderVacSummary(vacations) {
+  const container = document.getElementById('vacSummary');
+  if (!container) return;
+  const emps = COLLABS.filter(c => c.role === 'emp' && c.active !== false);
+  if (!emps.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div>Sin colaboradores activos</div>'; return; }
+
+  container.innerHTML = emps.map(emp => {
+    const cycle = getCurrentCycle(emp.hireDate);
+    if (!cycle) return '';
+    
+    // Days used in current cycle
+    const currentCycleVacs = vacations.filter(v => 
+      v.userId === emp.user && v.from >= cycle.start && v.from <= cycle.end
+    );
+    const usedCurrentCycle = currentCycleVacs.reduce((sum, v) => sum + (v.days || 0), 0);
+    
+    // Days used in next cycle (adelantos)
+    const nextCycleStart = new Date(cycle.end + 'T12:00:00');
+    nextCycleStart.setDate(nextCycleStart.getDate() + 1);
+    const nextCycleStartStr = dateToStr(nextCycleStart);
+    const adelantos = vacations.filter(v => v.userId === emp.user && v.from > cycle.end)
+      .reduce((sum, v) => sum + (v.days || 0), 0);
+    
+    const remaining = cycle.legalDays - usedCurrentCycle;
+    const pct = Math.min(100, (usedCurrentCycle / cycle.legalDays) * 100);
+    
+    return `<div class="config-card" style="margin-bottom:10px;padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <div style="font-weight:600">${emp.name}</div>
+        <div style="font-size:13px;color:${remaining > 0 ? '#2B4EAE' : '#C41230'};font-weight:700">${remaining} días disponibles</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${cycle.label} · Año ${cycle.year} · ${cycle.legalDays} días según LFT</div>
+      <div style="background:var(--border);border-radius:999px;height:6px;overflow:hidden">
+        <div style="background:${remaining > 5 ? '#2B4EAE' : remaining > 0 ? '#e8a020' : '#C41230'};height:100%;width:${pct}%;border-radius:999px;transition:width 0.3s"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px">
+        <span>Usados ciclo actual: ${usedCurrentCycle}</span>
+        <span>Total legal: ${cycle.legalDays}</span>
+      </div>
+      ${adelantos > 0 ? `<div style="font-size:11px;color:#e8a020;margin-top:4px">⚠️ ${adelantos} día${adelantos>1?'s':''} adelantados del siguiente ciclo</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderVacList(vacations) {
+  const container = document.getElementById('vacList');
+  if (!container) return;
+  if (!vacations.length) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">🏖️</div>Sin vacaciones registradas</div>';
+    return;
+  }
+  const sorted = [...vacations].sort((a,b) => b.from?.localeCompare(a.from));
+  container.innerHTML = sorted.map(v => `
+    <div class="log-entry" style="margin-bottom:8px">
+      <div>
+        <div style="font-weight:500">${v.empName}</div>
+        <div style="font-size:12px;color:var(--muted)">${formatDateMx(v.from)}${v.from !== v.to ? ' → ' + formatDateMx(v.to) : ''} · ${v.days} día${v.days !== 1 ? 's' : ''}</div>
+      </div>
+      <button onclick="window.deleteVacation('${v.id}')" style="background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:8px;padding:5px 10px;color:#C41230;font-size:12px;cursor:pointer">✕</button>
+    </div>`).join('');
+}
+
+async function saveVacation() {
+  const userId = document.getElementById('vacEmp').value;
+  const from = document.getElementById('vacFrom').value;
+  const to = document.getElementById('vacTo').value;
+  if (!userId || !from || !to) { showToast('Completa todos los campos', 'error'); return; }
+  if (from > to) { showToast('La fecha inicial debe ser menor a la final', 'error'); return; }
+
+  const emp = COLLABS.find(c => c.user === userId);
+  if (!emp) return;
+
+  const days = getWorkingDaysBetween(from, to);
+  if (days === 0) { showToast('No hay días hábiles en ese rango', 'warn'); return; }
+
+  try {
+    const vacId = `${userId}_${from}_${to}`;
+    await setDoc(doc(db, 'vacations', vacId), {
+      userId, empName: emp.name, from, to, days,
+      registeredBy: currentUser.name,
+      createdAt: new Date().toISOString()
+    });
+    document.getElementById('vacFrom').value = '';
+    document.getElementById('vacTo').value = '';
+    document.getElementById('vacEmp').value = '';
+    await loadVacaciones();
+    showToast(`✅ ${days} día${days !== 1 ? 's' : ''} de vacaciones registrados`, 'success');
+  } catch(e) {
+    showToast('⚠️ Error: ' + e.message, 'error');
+  }
+}
+
+async function deleteVacation(id) {
+  if (!confirm('¿Eliminar este período de vacaciones?')) return;
+  try {
+    const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    await deleteDoc(doc(db, 'vacations', id));
+    await loadVacaciones();
+    showToast('✅ Vacaciones eliminadas', 'success');
+  } catch(e) { showToast('⚠️ Error al eliminar', 'error'); }
+}
+
+async function isVacationDay(userId, dateStr) {
+  try {
+    const snap = await getDocs(collection(db, 'vacations'));
+    const vacations = snap.docs.map(d => d.data());
+    return vacations.some(v => v.userId === userId && dateStr >= v.from && dateStr <= v.to);
+  } catch(e) { return false; }
+}
 
 // Enter key en login
 // ════════════════════════════════
@@ -2960,6 +3419,8 @@ window.updateActiveToggle = updateActiveToggle;
 window.showInactiveCollabs = showInactiveCollabs;
 window.hideInactiveCollabs = hideInactiveCollabs;
 window.reactivateCollab = reactivateCollab;
+window.saveVacation = saveVacation;
+window.deleteVacation = deleteVacation;
 window.editCollab = editCollab;
 window.saveCollab = saveCollab;
 window.deleteCollab = deleteCollab;
