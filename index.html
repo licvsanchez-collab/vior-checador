@@ -1430,7 +1430,8 @@ function renderAdmin() {
         <div class="emp-detail">${entry?'Entró: '+entry.time:'Sin registro'}${exit?' · Salió: '+exit.time:''}</div>
       </div>
       <div class="emp-badge ${badgeClass}">${badge}</div>
-    </div>`).join('');
+    </div>`)
+  .join('');
 
   document.getElementById('statPresent').textContent = present;
   document.getElementById('statAbsent').textContent = absent;
