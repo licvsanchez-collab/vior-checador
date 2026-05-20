@@ -1110,6 +1110,11 @@ async function doLogin() {
     }
     if (!snap.empty) {
       const data = snap.docs[0].data();
+      // Block inactive users
+      if (data.active === false) {
+        showToast('Usuario inactivo — contacta a tu administrador', 'error');
+        return;
+      }
       currentUser = { ...data };
       await loadConfigFromDB();
       await loadRecordsFromDB();
@@ -3194,20 +3199,6 @@ function exportIncidencesCSV() {
 //  VACACIONES
 // ════════════════════════════════
 
-function getLFTDays(yearsOfService) {
-  // LFT 2023 table
-  if (yearsOfService < 1) return 12;
-  if (yearsOfService === 1) return 12;
-  if (yearsOfService === 2) return 14;
-  if (yearsOfService === 3) return 16;
-  if (yearsOfService === 4) return 18;
-  if (yearsOfService >= 5 && yearsOfService <= 9) return 20;
-  if (yearsOfService >= 10 && yearsOfService <= 14) return 22;
-  if (yearsOfService >= 15 && yearsOfService <= 19) return 24;
-  if (yearsOfService >= 20 && yearsOfService <= 24) return 26;
-  if (yearsOfService >= 25 && yearsOfService <= 29) return 28;
-  return 30;
-}
 
 function getCurrentCycle(hireDate) {
   // Returns current vacation cycle start and end dates based on anniversary
