@@ -1430,8 +1430,8 @@ function renderAdmin() {
         <div class="emp-detail">${entry?'Entró: '+entry.time:'Sin registro'}${exit?' · Salió: '+exit.time:''}</div>
       </div>
       <div class="emp-badge ${badgeClass}">${badge}</div>
-    </div>`)
-  .join('');
+    </div>`;
+  }).join('');
 
   document.getElementById('statPresent').textContent = present;
   document.getElementById('statAbsent').textContent = absent;
@@ -1466,6 +1466,7 @@ function renderAdmin() {
         </div>
       </div>
       ${(g.entry?.manual || g.exit?.manual) ? '<div style="font-size:11px;color:#e8a020;margin-top:4px">✏️ Contiene registro manual</div>' : ''}
+      </div>
     </div>`).join('');
   const empLogEl = document.getElementById('empLogList'); if(empLogEl) empLogEl.innerHTML = Object.keys(empGroups).length ? empGroupsHTML : '<div class="empty-state"><div class="empty-icon">📭</div>Sin registros hoy</div>';
 
@@ -1813,7 +1814,8 @@ async function renderCollabList() {
         <button onclick="window.editCollab('${c.id}')" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-size:12px;cursor:pointer">Editar</button>
         <button onclick="window.deleteCollab('${c.id}','${c.name}')" style="background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:8px;padding:6px 12px;color:#C41230;font-size:12px;cursor:pointer">Eliminar</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function showAddCollab() {
@@ -2046,26 +2048,17 @@ async function saveManualRecord() {
       rec.late = diff > CONFIG.tolerance ? diff : 0;
     }
     if (type === 'exit') {
-      // Query Firebase directly to find entry for this day (works for any date)
-      try {
-        const q = query(collection(db, 'records'), 
-          where('userId', '==', userId), 
-          where('date', '==', date),
-          where('type', '==', 'entry')
-        );
-        const entrySnap = await getDocs(q);
-        if (!entrySnap.empty) {
-          const entryRec = entrySnap.docs[0].data();
-          const rawEntry = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
-          const effectiveEntry = Math.max(rawEntry, timeToMinutes(CONFIG.startTime));
-          const exitMins = timeToMinutes(time24);
-          const lunchMin = CONFIG.lunchMin || 60;
-          rec.workedMin = Math.max(0, exitMins - effectiveEntry - lunchMin);
-          const overMin = exitMins - timeToMinutes(CONFIG.endTime);
-          const empData = COLLABS.find(c => c.user === userId);
-          rec.extraMin = (!empData?.office && overMin >= 30) ? overMin : 0;
-        }
-      } catch(e) { console.log('Entry lookup error:', e); }
+      const dayRecords = RECORDS.filter(r => r.userId === userId && r.date === date);
+      const entryRec = dayRecords.find(r => r.type === 'entry');
+      if (entryRec) {
+        const rawEntry = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
+        const effectiveEntry = Math.max(rawEntry, timeToMinutes(CONFIG.startTime));
+        const exitMins = timeToMinutes(time24);
+        const lunchMin = CONFIG.lunchMin || 60;
+        rec.workedMin = Math.max(0, exitMins - effectiveEntry - lunchMin);
+        const overMin = exitMins - timeToMinutes(CONFIG.endTime);
+        rec.extraMin = overMin >= 30 ? overMin : 0;
+      }
     }
     await setDoc(doc(db, 'records', String(rec.id)), rec);
     document.getElementById('manualModal').classList.remove('open');
@@ -2161,8 +2154,8 @@ function renderNomina(from, to) {
       <td style="padding:10px;text-align:center;border-bottom:1px solid var(--border);color:#C41230;font-weight:600">${absent}</td>
       <td style="padding:10px;text-align:center;border-bottom:1px solid var(--border);color:#e8a020;font-weight:600">${late}</td>
       <td style="padding:10px;text-align:center;border-bottom:1px solid var(--border);color:#6366f1;font-weight:600">${(extraMin/60).toFixed(2)}</td>
-    </tr>`);
-  
+    </tr>`;
+  });
   tableHTML += '</tbody></table>';
   document.getElementById('nominaTable').innerHTML = tableHTML;
   const nominaVarEl = document.getElementById('nominaVariables');
@@ -2977,7 +2970,8 @@ function renderVacSummary(vacations) {
         <span>Total: ${cycle.legalDays}</span>
       </div>
       ${adelantosNextCycle > 0 ? `<div style="font-size:11px;color:#e8a020;margin-top:4px">⚠️ ${adelantosNextCycle} día${adelantosNextCycle>1?'s':''} ya tomados del siguiente ciclo</div>` : ''}
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function renderVacList(vacations) {
@@ -3105,9 +3099,7 @@ async function generateReport() {
 }
 
 function renderReportDashboard(from, to) {
-  const allEmpsReport = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.active !== false) : DEMO_USERS.filter(u => u.role === 'emp');
-  // Only include employees who were already hired by the end of the report period
-  const emps = allEmpsReport.filter(emp => !emp.hireDate || emp.hireDate <= to);
+  const emps = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.active !== false) : DEMO_USERS.filter(u => u.role === 'emp');
   const workDays = CONFIG.workDays || [1,2,3,4,5];
   const dates = [];
   let cur = new Date(from + 'T12:00:00');
@@ -3119,10 +3111,8 @@ function renderReportDashboard(from, to) {
   }
   let totalPresent=0, totalAbsent=0, totalLate=0, totalExtraMin=0;
   const empRows = emps.map(emp => {
-    // Only count days from hireDate onwards
-    const empDates = dates.filter(d => !emp.hireDate || d >= emp.hireDate);
     let present=0, absent=0, late=0, extraMin=0;
-    empDates.forEach(date => {
+    dates.forEach(date => {
       const recs = REPORT_RECORDS.filter(r => r.userId === emp.user && r.date === date);
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
@@ -3155,8 +3145,8 @@ function renderReportDashboard(from, to) {
           <div style="font-size:11px;color:var(--muted)">H. Extra</div>
         </div>
       </div>
-    </div>`);
-  
+    </div>`;
+  });
   const el = id => document.getElementById(id);
   if(el('rptPresent')) el('rptPresent').textContent = totalPresent;
   if(el('rptAbsent')) el('rptAbsent').textContent = totalAbsent;
@@ -3182,19 +3172,14 @@ function renderReportDashboard(from, to) {
       const g = grouped[key];
       const header = g.name !== lastUser ? `<div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:#1a1f2e;margin:16px 0 8px;padding-bottom:4px;border-bottom:2px solid #C41230">${g.name}</div>` : '';
       lastUser = g.name;
-      const rEntryId = g.entry?.id || '';
-        const rExitId = g.exit?.id || '';
-        return header + `<div style="display:grid;grid-template-columns:120px 1fr 1fr 1fr 1fr 70px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+      return header + `<div style="display:grid;grid-template-columns:120px 1fr 1fr 1fr 1fr;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
         <div style="font-size:13px;color:var(--muted)">${g.date}</div>
         <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">Entrada</div><div style="font-weight:700;color:#1a1f2e;font-size:13px">${g.entry?.time||'—'}</div></div>
         <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">Salida</div><div style="font-weight:700;color:#C41230;font-size:13px">${g.exit?.time||'—'}</div></div>
         <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">Trabajado</div><div style="font-weight:700;color:#2B4EAE;font-size:13px">${g.exit?.workedMin?fmtMin(g.exit.workedMin):'—'}</div></div>
         <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">Extra</div><div style="font-weight:700;color:#6366f1;font-size:13px">${g.exit?.extraMin>0?fmtMin(g.exit.extraMin):'—'}</div></div>
-        <div style="display:flex;flex-direction:column;gap:4px;align-items:center">
-          ${rEntryId ? '<button onclick="window.deleteRecordFromReport(\'' + rEntryId + '\')" style="background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:6px;padding:3px 8px;color:#C41230;font-size:11px;cursor:pointer;width:100%">✕ Ent</button>' : ''}
-          ${rExitId ? '<button onclick="window.deleteRecordFromReport(\'' + rExitId + '\')" style="background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:6px;padding:3px 8px;color:#C41230;font-size:11px;cursor:pointer;width:100%">✕ Sal</button>' : ''}
-        </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     if(el('rptRecordsList')) el('rptRecordsList').innerHTML = html;
   } else {
     if(el('rptRecordsList')) el('rptRecordsList').innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>Sin registros en este periodo</div>';
@@ -3208,11 +3193,9 @@ function exportRangeCSV() { exportIncidencesCSV(); }
 
 function exportIncidencesCSV() {
   if (!REPORT_RECORDS.length) { showToast('Genera un reporte primero', 'warn'); return; }
-  const allEmpsExport = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.active !== false) : DEMO_USERS.filter(u => u.role === 'emp');
+  const emps = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.active !== false) : DEMO_USERS.filter(u => u.role === 'emp');
   const from = document.getElementById('rptFrom').value;
   const to   = document.getElementById('rptTo').value;
-  // Only include employees hired before end of period
-  const emps = allEmpsExport.filter(emp => !emp.hireDate || emp.hireDate <= to);
 
   const dates = [];
   let cur = new Date(from + 'T12:00:00');
@@ -3227,8 +3210,7 @@ function exportIncidencesCSV() {
   const rows = [['Colaborador','Fecha','Entrada','Salida','Retardo','Horas Trabajadas','Horas Extra','Incidencia']];
   
   emps.forEach(emp => {
-    const empDatesExport = dates.filter(d => !emp.hireDate || d >= emp.hireDate);
-    empDatesExport.forEach(date => {
+    dates.forEach(date => {
       const recs = REPORT_RECORDS.filter(r => r.userId === emp.user && r.date === date);
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
@@ -3287,37 +3269,6 @@ async function captureAndSavePhoto(userId, videoElement) {
   }
 }
 
-// ════════════════════════════════
-//  DELETE RECORD
-// ════════════════════════════════
-async function deleteRecordFromReport(recordId) {
-  if (!recordId) return;
-  if (!confirm('¿Eliminar este registro? Esta acción no se puede deshacer.')) return;
-  try {
-    const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-    await deleteDoc(doc(db, 'records', String(recordId)));
-    // Refresh report
-    await generateReport();
-    showToast('✅ Registro eliminado', 'success');
-  } catch(e) {
-    showToast('⚠️ Error al eliminar: ' + e.message, 'error');
-  }
-}
-
-async function deleteRecord(recordId) {
-  if (!recordId) return;
-  if (!confirm('¿Eliminar este registro? Esta acción no se puede deshacer.')) return;
-  try {
-    const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-    await deleteDoc(doc(db, 'records', String(recordId)));
-    await loadRecordsFromDB();
-    renderAdmin();
-    showToast('✅ Registro eliminado', 'success');
-  } catch(e) {
-    showToast('⚠️ Error al eliminar: ' + e.message, 'error');
-  }
-}
-
 // Enter key en login
 // ════════════════════════════════
 //  EXPOSE TO WINDOW (required for type="module")
@@ -3361,8 +3312,6 @@ window.exportSAIT = exportSAIT;
 window.openManualModal = openManualModal;
 window.selectManualType = selectManualType;
 window.saveManualRecord = saveManualRecord;
-window.deleteRecord = deleteRecord;
-window.deleteRecordFromReport = deleteRecordFromReport;
 window.closeManualModal = closeManualModal;
 window.showEmpDetail = showEmpDetail;
 window.startMobileFacialScan = startMobileFacialScan;
