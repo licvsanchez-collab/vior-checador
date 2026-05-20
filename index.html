@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Vior Steel"> 
+<meta name="apple-mobile-web-app-title" content="Vior Steel">
 <meta name="application-name" content="Vior Steel">
 <link rel="apple-touch-icon" href="https://checador.viorsteel.mx/icon.png">
 <link rel="icon" type="image/png" href="https://checador.viorsteel.mx/icon.png">
@@ -572,6 +572,13 @@
           <input class="config-input" id="vacTo" type="date">
         </div>
         <div style="font-size:12px;color:var(--muted);margin:8px 0">Para un solo día, pon la misma fecha en ambos campos.</div>
+        
+        <div class="field-label" style="margin-top:8px">Ciclo al que corresponden</div>
+        <select class="field-input" id="vacCycle" style="background:var(--surface2);cursor:pointer">
+          <option value="">Selecciona colaborador primero...</option>
+        </select>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Si son días adelantados, selecciona el ciclo siguiente.</div>
+        
         <button class="save-btn" onclick="window.saveVacation()" style="margin-top:8px">✅ Registrar vacaciones</button>
       </div>
 
@@ -2752,20 +2759,21 @@ function cancelMobileFacial() {
 //  VACACIONES
 // ════════════════════════════════
 
+
 function getLFTDays(yearsOfService) {
-  if (yearsOfService < 1) return 0;
+  if (yearsOfService < 1) return 12;
   if (yearsOfService === 1) return 12;
   if (yearsOfService === 2) return 14;
   if (yearsOfService === 3) return 16;
   if (yearsOfService === 4) return 18;
-  if (yearsOfService === 5) return 20;
-  if (yearsOfService >= 6 && yearsOfService <= 10) return 22;
-  if (yearsOfService >= 11 && yearsOfService <= 15) return 24;
-  if (yearsOfService >= 16 && yearsOfService <= 20) return 26;
-  if (yearsOfService >= 21 && yearsOfService <= 25) return 28;
-  if (yearsOfService >= 26 && yearsOfService <= 30) return 30;
+  if (yearsOfService >= 5 && yearsOfService <= 9) return 20;
+  if (yearsOfService >= 10 && yearsOfService <= 14) return 22;
+  if (yearsOfService >= 15 && yearsOfService <= 19) return 24;
+  if (yearsOfService >= 20 && yearsOfService <= 24) return 26;
+  if (yearsOfService >= 25 && yearsOfService <= 29) return 28;
   return 30;
 }
+
 function getCurrentCycle(hireDate) {
   // Returns current vacation cycle start and end dates based on anniversary
   if (!hireDate) return null;
@@ -2800,6 +2808,41 @@ function getLegalVacationDays(hireDate) {
   return cycle ? cycle.legalDays : 12;
 }
 
+function updateVacCycles() {
+  const userId = document.getElementById('vacEmp')?.value;
+  const cycleEl = document.getElementById('vacCycle');
+  if (!cycleEl) return;
+  if (!userId) {
+    cycleEl.innerHTML = '<option value="">Selecciona colaborador primero...</option>';
+    return;
+  }
+  const emp = COLLABS.find(c => c.user === userId);
+  if (!emp?.hireDate) return;
+
+  const cycle = getCurrentCycle(emp.hireDate);
+  if (!cycle) return;
+
+  // Build cycle options: previous, current, next
+  const hire = new Date(emp.hireDate + 'T12:00:00');
+  const cycles = [];
+  
+  // Generate cycles from hire year to 2 years ahead
+  for (let yr = hire.getFullYear(); yr <= new Date().getFullYear() + 1; yr++) {
+    const cs = new Date(hire); cs.setFullYear(yr);
+    const ce = new Date(cs); ce.setFullYear(yr + 1); ce.setDate(ce.getDate() - 1);
+    const yearsAtStart = yr - hire.getFullYear();
+    const legalDays = getLFTDays(yearsAtStart);
+    if (legalDays === 0 && yearsAtStart === 0) {
+      // First incomplete year - still show as option for adelantos
+      cycles.push({ value: `${dateToStr(cs)}_${dateToStr(ce)}`, label: `Ciclo ${dateToStr(cs)} → ${dateToStr(ce)} (${legalDays} días - sin derecho aún)`, isCurrent: cs <= new Date() && new Date() <= ce });
+    } else {
+      cycles.push({ value: `${dateToStr(cs)}_${dateToStr(ce)}`, label: `Ciclo ${dateToStr(cs)} → ${dateToStr(ce)} (${legalDays} días LFT)`, isCurrent: cs <= new Date() && new Date() <= ce });
+    }
+  }
+
+  cycleEl.innerHTML = cycles.map(c => `<option value="${c.value}" ${c.isCurrent ? 'selected' : ''}>${c.label}</option>`).join('');
+}
+
 async function loadVacaciones() {
   // Populate employee dropdown
   const sel = document.getElementById('vacEmp');
@@ -2812,6 +2855,7 @@ async function loadVacaciones() {
       opt.textContent = emp.name;
       sel.appendChild(opt);
     });
+    sel.onchange = updateVacCycles;
   }
 
   // Load all vacations from Firebase
@@ -2856,26 +2900,39 @@ function renderVacSummary(vacations) {
     const prevCycleStartStr = dateToStr(prevCycleStart);
     const prevCycleEndStr = dateToStr(prevCycleEnd);
 
-    // Days used in current cycle (including adelantos taken before cycle started)
-    // Adelantos = days taken after previous cycle ended but before current cycle started
-    // i.e. days taken in the gap between prev cycle end and current cycle start
-    // Actually adelantos = days taken before hireDate anniversary of current year
+    // Count days by cycle assignment
+    // If vacation has cycleStart/cycleEnd, use that to assign to cycle
+    // Otherwise fall back to vacation date
     const usedCurrentCycle = vacations
-      .filter(v => v.userId === emp.user && v.from >= cycle.start && v.from <= cycle.end)
+      .filter(v => {
+        if (v.userId !== emp.user) return false;
+        if (v.cycleStart && v.cycleEnd) {
+          // Use explicitly assigned cycle
+          return v.cycleStart === cycle.start;
+        }
+        // Fallback: use vacation date
+        return v.from >= cycle.start && v.from <= cycle.end;
+      })
       .reduce((sum, v) => sum + (v.days || 0), 0);
 
-    // Adelantos: days taken before current cycle started but "belong" to current cycle
-    // These are days taken after prev cycle ended (i.e. from > prevCycleEnd)
-    // but this is tricky - let's count ALL days taken that aren't in prev cycles
-    // Simple approach: count days taken before cycle.start as adelantos of current cycle
-    // if they were taken after the PREVIOUS cycle ended
     const adelantosCurrentCycle = vacations
-      .filter(v => v.userId === emp.user && v.from > prevCycleEndStr && v.from < cycle.start)
+      .filter(v => {
+        if (v.userId !== emp.user) return false;
+        if (v.cycleStart && v.cycleEnd) return false; // Already handled above
+        return v.from > prevCycleEndStr && v.from < cycle.start;
+      })
       .reduce((sum, v) => sum + (v.days || 0), 0);
 
-    // Days used in NEXT cycle (future adelantos)
+    // Days assigned to NEXT cycle
+    const nextCycleStart = new Date(cycle.end + 'T12:00:00');
+    nextCycleStart.setDate(nextCycleStart.getDate() + 1);
+    const nextCycleStartStr = dateToStr(nextCycleStart);
     const adelantosNextCycle = vacations
-      .filter(v => v.userId === emp.user && v.from > cycle.end)
+      .filter(v => {
+        if (v.userId !== emp.user) return false;
+        if (v.cycleStart) return v.cycleStart > cycle.end;
+        return v.from > cycle.end;
+      })
       .reduce((sum, v) => sum + (v.days || 0), 0);
 
     const totalUsed = usedCurrentCycle + adelantosCurrentCycle;
@@ -2932,15 +2989,19 @@ async function saveVacation() {
   if (days === 0) { showToast('No hay días hábiles en ese rango', 'warn'); return; }
 
   try {
+    const cycleValue = document.getElementById('vacCycle')?.value || '';
+    const [cycleStart, cycleEnd] = cycleValue ? cycleValue.split('_') : ['', ''];
     const vacId = `${userId}_${from}_${to}`;
     await setDoc(doc(db, 'vacations', vacId), {
       userId, empName: emp.name, from, to, days,
+      cycleStart, cycleEnd,
       registeredBy: currentUser.name,
       createdAt: new Date().toISOString()
     });
     document.getElementById('vacFrom').value = '';
     document.getElementById('vacTo').value = '';
     document.getElementById('vacEmp').value = '';
+    document.getElementById('vacCycle').innerHTML = '<option value="">Selecciona colaborador primero...</option>';
     await loadVacaciones();
     showToast(`✅ ${days} día${days !== 1 ? 's' : ''} de vacaciones registrados`, 'success');
   } catch(e) {
@@ -3189,6 +3250,7 @@ window.showInactiveCollabs = showInactiveCollabs;
 window.hideInactiveCollabs = hideInactiveCollabs;
 window.reactivateCollab = reactivateCollab;
 window.saveVacation = saveVacation;
+window.updateVacCycles = updateVacCycles;
 window.deleteVacation = deleteVacation;
 window.editCollab = editCollab;
 window.saveCollab = saveCollab;
