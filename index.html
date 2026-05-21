@@ -526,6 +526,7 @@
           <button onclick="window.setRange('week')" class="range-btn">Esta semana</button>
           <button onclick="window.setRange('lastweek')" class="range-btn">Semana anterior</button>
           <button onclick="window.setRange('month')" class="range-btn">Este mes</button>
+          <button onclick="window.setRange('lastmonth')" class="range-btn">Mes anterior</button>
           <button onclick="window.setRange('last30')" class="range-btn">Últimos 30 días</button>
         </div>
         <button class="save-btn" onclick="window.generateReport()" style="margin-top:12px">🔍 Generar reporte</button>
@@ -550,7 +551,7 @@
         <button class="export-btn" onclick="window.exportIncidencesCSV()">📊 Descargar Excel — Reporte de incidencias</button>
 
         <!-- Records list -->
-        <div class="section-title" style="margin-top:8px">Registros del periodo</div>
+        <div class="section-title" style="margin-top:8px">Detalle por colaborador</div>
         <div id="rptRecordsList"></div>
       </div>
     </div>
@@ -3122,6 +3123,12 @@ function setRange(type) {
   } else if (type === 'month') {
     from = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
     to = todayStr();
+  } else if (type === 'lastmonth') {
+    const y = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    const m = now.getMonth() === 0 ? 12 : now.getMonth();
+    from = `${y}-${String(m).padStart(2,'0')}-01`;
+    const lastDay = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
+    to = `${y}-${String(m).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
   } else if (type === 'last30') {
     const d = new Date(now); d.setDate(d.getDate() - 30);
     from = dateToStr(d); to = todayStr();
@@ -3144,6 +3151,9 @@ async function generateReport() {
     const q = query(collection(db, 'records'), where('date', '>=', from), where('date', '<=', to));
     const snap = await getDocs(q);
     REPORT_RECORDS = snap.docs.map(d => d.data());
+    // Load justificantes for this period
+    const jSnap = await getDocs(query(collection(db, 'justificantes'), where('date', '>=', from), where('date', '<=', to)));
+    window.REPORT_JUSTIFICANTES = jSnap.docs.map(d => d.data());
     renderReportDashboard(from, to);
     document.getElementById('rptDashboard').style.display = 'block';
     showToast('✅ Reporte generado', 'success');
@@ -3170,7 +3180,9 @@ function renderReportDashboard(from, to) {
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
       const isVac = window.REPORT_VACATIONS?.some(v => v.userId === emp.user && date >= v.from && date <= v.to);
+      const justif2 = window.REPORT_JUSTIFICANTES?.find(j => j.userId === emp.user && j.date === date);
       if (isVac) { present++; }
+      else if (!entry && justif2) { present++; } // justified absence counts as present
       else if (!entry) absent++;
       else { present++; if (entry.late > 0) late++; if (exit?.extraMin) extraMin += exit.extraMin; }
     });
@@ -3207,36 +3219,50 @@ function renderReportDashboard(from, to) {
   if(el('rptExtra')) el('rptExtra').textContent = fmtMin(totalExtraMin);
   if(el('rptEmpBreakdown')) el('rptEmpBreakdown').innerHTML = empRows.join('') || '<div class="empty-state"><div class="empty-icon">📭</div>Sin colaboradores</div>';
 
-  // Records list grouped by collaborator
-  if (REPORT_RECORDS.length) {
-    const grouped = {};
-    REPORT_RECORDS.forEach(r => {
-      const key = r.userId + '_' + r.date;
-      if (!grouped[key]) grouped[key] = { name: r.name, date: r.date, entry: null, exit: null };
-      if (r.type === 'entry') grouped[key].entry = r;
-      else grouped[key].exit = r;
-    });
-    const sortedKeys = Object.keys(grouped).sort((a,b) => {
-      const [uA,dA] = a.split('_'); const [uB,dB] = b.split('_');
-      return uA.localeCompare(uB) || dA.localeCompare(dB);
-    });
-    let lastUser = '';
-    const html = sortedKeys.map(key => {
-      const g = grouped[key];
-      const header = g.name !== lastUser ? `<div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:#1a1f2e;margin:16px 0 8px;padding-bottom:4px;border-bottom:2px solid #C41230">${g.name}</div>` : '';
-      lastUser = g.name;
-      return header + `<div style="display:grid;grid-template-columns:120px 1fr 1fr 1fr 1fr;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
-        <div style="font-size:13px;color:var(--muted)">${g.date}</div>
-        <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">Entrada</div><div style="font-weight:700;color:#1a1f2e;font-size:13px">${g.entry?.time||'—'}</div></div>
-        <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">Salida</div><div style="font-weight:700;color:#C41230;font-size:13px">${g.exit?.time||'—'}</div></div>
-        <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">Trabajado</div><div style="font-weight:700;color:#2B4EAE;font-size:13px">${g.exit?.workedMin?fmtMin(g.exit.workedMin):'—'}</div></div>
-        <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">Extra</div><div style="font-weight:700;color:#6366f1;font-size:13px">${g.exit?.extraMin>0?fmtMin(g.exit.extraMin):'—'}</div></div>
+  // Full per-employee detail including absences
+  const detailHtml = emps.map(emp => {
+    const empDates2 = emp.hireDate ? dates.filter(d => d >= emp.hireDate) : dates;
+    if (!empDates2.length) return '';
+    const rows = empDates2.map(date => {
+      const recs = REPORT_RECORDS.filter(r => r.userId === emp.user && r.date === date);
+      const entry = recs.find(r => r.type === 'entry');
+      const exit  = recs.find(r => r.type === 'exit');
+      const isVac = window.REPORT_VACATIONS?.some(v => v.userId === emp.user && date >= v.from && date <= v.to);
+      const justif = window.REPORT_JUSTIFICANTES?.find(j => j.userId === emp.user && j.date === date);
+
+      if (isVac) {
+        return `<div style="display:grid;grid-template-columns:110px 1fr;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:12px;color:var(--muted)">${date}</div>
+          <div style="font-size:12px;color:#2B4EAE;font-weight:600">🏖️ Vacaciones</div>
+        </div>`;
+      }
+      if (!entry) {
+        if (justif) {
+          return `<div style="display:grid;grid-template-columns:110px 1fr;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="font-size:12px;color:var(--muted)">${date}</div>
+            <div style="font-size:12px;color:#6366f1;font-weight:600">✅ Justificada <span style="font-weight:400;color:var(--muted)">— ${justif.motivo}</span></div>
+          </div>`;
+        }
+        return `<div style="display:grid;grid-template-columns:110px 1fr auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:12px;color:var(--muted)">${date}</div>
+          <div style="font-size:12px;color:#C41230;font-weight:600">❌ Falta</div>
+          <button onclick="window.openJustificarModal('${emp.user}','${emp.name}','${date}')" style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:6px;padding:4px 10px;color:#6366f1;font-size:11px;cursor:pointer;white-space:nowrap">✓ Justificar</button>
+        </div>`;
+      }
+      return `<div style="display:grid;grid-template-columns:110px 80px 80px 70px 70px;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="font-size:12px;color:var(--muted)">${date}</div>
+        <div style="text-align:center"><div style="font-size:10px;color:var(--muted)">Entrada</div><div style="font-weight:700;color:#1a1f2e;font-size:12px">${entry.time}</div>${entry.late>0?`<div style="font-size:10px;color:#e8a020">+${entry.late}min</div>`:''}</div>
+        <div style="text-align:center"><div style="font-size:10px;color:var(--muted)">Salida</div><div style="font-weight:700;color:#C41230;font-size:12px">${exit?.time||'—'}</div></div>
+        <div style="text-align:center"><div style="font-size:10px;color:var(--muted)">Trabajado</div><div style="font-weight:700;color:#2B4EAE;font-size:12px">${exit?.workedMin?fmtMin(exit.workedMin):'—'}</div></div>
+        <div style="text-align:center"><div style="font-size:10px;color:var(--muted)">Extra</div><div style="font-weight:700;color:#6366f1;font-size:12px">${exit?.extraMin>0?fmtMin(exit.extraMin):'—'}</div></div>
       </div>`;
     }).join('');
-    if(el('rptRecordsList')) el('rptRecordsList').innerHTML = html;
-  } else {
-    if(el('rptRecordsList')) el('rptRecordsList').innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>Sin registros en este periodo</div>';
-  }
+    return `<div style="margin-bottom:20px">
+      <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:#1a1f2e;margin-bottom:6px;padding-bottom:6px;border-bottom:2px solid #C41230">${emp.name}</div>
+      ${rows}
+    </div>`;
+  }).join('');
+  if(el('rptRecordsList')) el('rptRecordsList').innerHTML = detailHtml || '<div class="empty-state"><div class="empty-icon">📭</div>Sin colaboradores en este periodo</div>';
 }
 
 // ════════════════════════════════
@@ -3269,7 +3295,8 @@ function exportIncidencesCSV() {
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
       const isVac = window.REPORT_VACATIONS?.some(v => v.userId === emp.user && date >= v.from && date <= v.to);
-      const incidencia = isVac ? 'VACACIONES' : !entry ? 'FALTA' : entry.late > 0 ? 'RETARDO' : 'ASISTENCIA';
+      const justif = window.REPORT_JUSTIFICANTES?.find(j => j.userId === emp.user && j.date === date);
+      const incidencia = isVac ? 'VACACIONES' : (!entry && justif) ? 'JUSTIFICADA' : !entry ? 'FALTA' : entry.late > 0 ? 'RETARDO' : 'ASISTENCIA';
       rows.push([emp.name, date, entry?.time||'—', exit?.time||'—',
         entry?.late ? entry.late+'min' : '',
         exit?.workedMin ? fmtMin(exit.workedMin) : '',
@@ -3327,6 +3354,74 @@ async function captureAndSavePhoto(userId, videoElement) {
 // ════════════════════════════════
 //  EXPOSE TO WINDOW (required for type="module")
 // ════════════════════════════════
+// ════════════════════════════════
+//  JUSTIFICANTES
+// ════════════════════════════════
+function openJustificarModal(userId, name, date) {
+  document.getElementById('justUserId').value = userId;
+  document.getElementById('justDate').value = date;
+  document.getElementById('justMotivo').value = '';
+  document.getElementById('justNota').value = '';
+  document.getElementById('justInfoLabel').textContent = name + '  —  ' + date;
+  // Reset buttons
+  document.querySelectorAll('.just-opt-btn').forEach(b => {
+    b.style.border = '1px solid var(--border)';
+    b.style.background = 'var(--surface2)';
+    b.style.color = 'var(--text)';
+  });
+  document.getElementById('btnSaveJust').disabled = true;
+  document.getElementById('justificarModal').classList.add('open');
+}
+
+function selectJustMotivo(motivo) {
+  document.getElementById('justMotivo').value = motivo;
+  document.querySelectorAll('.just-opt-btn').forEach(b => {
+    const active = b.dataset.motivo === motivo;
+    b.style.border = active ? '2px solid #6366f1' : '1px solid var(--border)';
+    b.style.background = active ? 'rgba(99,102,241,0.1)' : 'var(--surface2)';
+    b.style.color = active ? '#6366f1' : 'var(--text)';
+  });
+  document.getElementById('btnSaveJust').disabled = false;
+}
+
+async function saveJustificante() {
+  const userId = document.getElementById('justUserId').value;
+  const date   = document.getElementById('justDate').value;
+  const motivo = document.getElementById('justMotivo').value;
+  const nota   = document.getElementById('justNota').value.trim();
+  if (!motivo) { showToast('Selecciona un motivo', 'error'); return; }
+  const btn = document.getElementById('btnSaveJust');
+  btn.textContent = '⏳ Guardando…'; btn.disabled = true;
+  try {
+    const justId = `${userId}_${date}`;
+    await setDoc(doc(db, 'justificantes', justId), {
+      userId, date, motivo,
+      nota: nota || '',
+      registeredBy: currentUser.name,
+      createdAt: new Date().toLocaleString('sv-SE', {timeZone:'America/Monterrey'}).replace(' ','T')
+    });
+    // Update local cache so UI refreshes immediately
+    if (!window.REPORT_JUSTIFICANTES) window.REPORT_JUSTIFICANTES = [];
+    window.REPORT_JUSTIFICANTES = window.REPORT_JUSTIFICANTES.filter(j => !(j.userId === userId && j.date === date));
+    window.REPORT_JUSTIFICANTES.push({ userId, date, motivo, nota });
+    closeJustificarModal();
+    // Re-render
+    const from = document.getElementById('rptFrom').value;
+    const to   = document.getElementById('rptTo').value;
+    renderReportDashboard(from, to);
+    showToast('✅ Falta justificada', 'success');
+  } catch(e) {
+    showToast('⚠️ Error: ' + e.message, 'error');
+    btn.textContent = 'Guardar'; btn.disabled = false;
+  }
+}
+
+function closeJustificarModal() {
+  document.getElementById('justificarModal').classList.remove('open');
+  const btn = document.getElementById('btnSaveJust');
+  if (btn) { btn.textContent = 'Guardar'; btn.disabled = true; }
+}
+
 window.doLogin = doLogin;
 window.showConsultor = showConsultor;
 window.logout = logout;
@@ -3368,6 +3463,10 @@ window.openManualModal = openManualModal;
 window.selectManualType = selectManualType;
 window.saveManualRecord = saveManualRecord;
 window.closeManualModal = closeManualModal;
+window.openJustificarModal = openJustificarModal;
+window.selectJustMotivo = selectJustMotivo;
+window.saveJustificante = saveJustificante;
+window.closeJustificarModal = closeJustificarModal;
 window.showEmpDetail = showEmpDetail;
 window.startMobileFacialScan = startMobileFacialScan;
 window.cancelMobileFacial = cancelMobileFacial;
@@ -3389,5 +3488,35 @@ window.activateTabletMode = async function() {
 window.cancelFacialScan = cancelFacialScan;
 window.deleteFace = deleteFace;
 </script>
+
+<!-- Justificar Falta Modal -->
+<div class="modal-overlay" id="justificarModal" onclick="if(event.target.id==='justificarModal') window.closeJustificarModal()">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">✅ Justificar falta</div>
+    <input type="hidden" id="justUserId">
+    <input type="hidden" id="justDate">
+
+    <div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:12px;margin-bottom:20px">
+      <div id="justInfoLabel" style="font-size:14px;font-weight:600;color:#6366f1"></div>
+    </div>
+
+    <div class="field-label">Motivo</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
+      <button type="button" class="just-opt-btn" onclick="window.selectJustMotivo('Permiso personal')" data-motivo="Permiso personal" style="padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer;text-align:left">📋 Permiso personal</button>
+      <button type="button" class="just-opt-btn" onclick="window.selectJustMotivo('Incapacidad médica')" data-motivo="Incapacidad médica" style="padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer;text-align:left">🏥 Incapacidad médica</button>
+      <button type="button" class="just-opt-btn" onclick="window.selectJustMotivo('Día festivo no laborado')" data-motivo="Día festivo no laborado" style="padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer;text-align:left">📅 Día festivo no laborado</button>
+      <button type="button" class="just-opt-btn" onclick="window.selectJustMotivo('Otro')" data-motivo="Otro" style="padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer;text-align:left">📝 Otro</button>
+    </div>
+    <input type="hidden" id="justMotivo" value="">
+    <input class="field-input" id="justNota" type="text" placeholder="Nota adicional (opcional)" style="margin-bottom:20px">
+
+    <div style="display:flex;gap:10px">
+      <button class="save-btn" id="btnSaveJust" onclick="window.saveJustificante()" style="flex:1" disabled>Guardar</button>
+      <button class="close-modal" onclick="window.closeJustificarModal()" style="flex:1">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
