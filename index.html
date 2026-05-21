@@ -2039,7 +2039,7 @@ async function saveManualRecord() {
     const timeDisplay = `${String(h12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${ampm}`;
     const rec = {
       id: Date.now(), userId, name: emp.name, type, date,
-      time: timeDisplay, time24, timestamp: new Date(date + 'T' + time24).toISOString(),
+      time: timeDisplay, time24, timestamp: new Date(date + 'T' + time24 + ':00').toLocaleString('sv-SE', {timeZone:'America/Monterrey'}).replace(' ','T'),
       manual: true, registeredBy: currentUser.name,
       lat: CONFIG.lat, lng: CONFIG.lng, distance: 0
     };
@@ -2048,7 +2048,9 @@ async function saveManualRecord() {
       rec.late = diff > CONFIG.tolerance ? diff : 0;
     }
     if (type === 'exit') {
-      const dayRecords = RECORDS.filter(r => r.userId === userId && r.date === date);
+      // Query Firebase directly so past-day records are found (RECORDS only holds today)
+      const daySnap = await getDocs(query(collection(db, 'records'), where('userId','==',userId), where('date','==',date)));
+      const dayRecords = daySnap.docs.map(d => d.data());
       const entryRec = dayRecords.find(r => r.type === 'entry');
       if (entryRec) {
         const rawEntry = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
@@ -2139,7 +2141,8 @@ function renderNomina(from, to) {
     </tr></thead><tbody>`;
   NOMINA_EMPS.forEach(emp => {
     let worked=0, absent=0, late=0, extraMin=0;
-    dates.forEach(date => {
+    const empDates = emp.hireDate ? dates.filter(d => d >= emp.hireDate) : dates;
+    empDates.forEach(date => {
       const recs = NOMINA_RECORDS.filter(r => r.userId === emp.user && r.date === date);
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
@@ -2187,7 +2190,8 @@ async function exportSAIT() {
     let workedDays = 0;
     let totalExtraMin = 0;
 
-    dates.forEach(date => {
+    const empDates = emp.hireDate ? dates.filter(d => d >= emp.hireDate) : dates;
+    empDates.forEach(date => {
       const recs = NOMINA_RECORDS.filter(r => r.userId === emp.user && r.date === date);
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
@@ -3112,7 +3116,8 @@ function renderReportDashboard(from, to) {
   let totalPresent=0, totalAbsent=0, totalLate=0, totalExtraMin=0;
   const empRows = emps.map(emp => {
     let present=0, absent=0, late=0, extraMin=0;
-    dates.forEach(date => {
+    const empDates = emp.hireDate ? dates.filter(d => d >= emp.hireDate) : dates;
+    empDates.forEach(date => {
       const recs = REPORT_RECORDS.filter(r => r.userId === emp.user && r.date === date);
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
@@ -3210,7 +3215,8 @@ function exportIncidencesCSV() {
   const rows = [['Colaborador','Fecha','Entrada','Salida','Retardo','Horas Trabajadas','Horas Extra','Incidencia']];
   
   emps.forEach(emp => {
-    dates.forEach(date => {
+    const empDates = emp.hireDate ? dates.filter(d => d >= emp.hireDate) : dates;
+    empDates.forEach(date => {
       const recs = REPORT_RECORDS.filter(r => r.userId === emp.user && r.date === date);
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
