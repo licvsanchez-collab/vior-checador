@@ -787,6 +787,7 @@
     <div style="display:flex;gap:8px;margin-bottom:20px">
       <button type="button" id="roleEmp" onclick="window.selectRole('emp')" style="flex:1;padding:12px;border-radius:10px;border:2px solid #C41230;background:rgba(196,18,48,0.1);color:#C41230;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;cursor:pointer">👤 Empleado</button>
       <button type="button" id="roleAdmin" onclick="window.selectRole('admin')" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer">🔧 Admin</button>
+      <button type="button" id="roleConsultor" onclick="window.selectRole('consultor')" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer">👁️ Consultor</button>
     </div>
     <input type="hidden" id="collabRole" value="emp">
 
@@ -1127,6 +1128,7 @@ async function doLogin() {
       await loadRecordsFromDB();
       startRealtimeListener();
       if (data.role === 'admin') showAdmin();
+      else if (data.role === 'consultor') showConsultor();
       else if (data.role === 'enroller') showEnroller();
       else showEmployee();
       return;
@@ -1157,6 +1159,41 @@ function show(id) {
   document.getElementById(id).classList.add('active');
 }
 
+function showConsultor() {
+  show('adminScreen');
+  const now = new Date();
+  document.getElementById('adminDate').textContent =
+    now.toLocaleDateString('es-MX', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  // Hide tabs not available to consultor
+  document.querySelectorAll('.admin-tabs .tab').forEach(t => {
+    const txt = t.textContent.trim().toLowerCase();
+    if (txt === 'config' || txt === 'vacaciones') t.style.display = 'none';
+    else t.style.display = '';
+  });
+  // Hide action buttons
+  const manualBtn = document.querySelector('[onclick="window.openManualModal()"]');
+  if (manualBtn) manualBtn.style.display = 'none';
+  const addBtn = document.querySelector('[onclick="window.showAddCollab()"]');
+  if (addBtn) addBtn.style.display = 'none';
+  const inactBtn = document.querySelector('[onclick="window.showInactiveCollabs()"]');
+  if (inactBtn) inactBtn.style.display = 'none';
+  loadConfig();
+  loadCollabs().then(() => {
+    loadRecordsFromDB().then(() => {
+      loadTodayVacations().then(() => {
+        loadEmpPhotos();
+        renderAdmin();
+      });
+    });
+  });
+  const today = todayStr();
+  const monthStart = today.substring(0,8) + '01';
+  if (document.getElementById('rptFrom')) {
+    document.getElementById('rptFrom').value = monthStart;
+    document.getElementById('rptTo').value = today;
+  }
+}
+
 function showEmployee() {
   show('empScreen');
   document.getElementById('empName').textContent = currentUser.name;
@@ -1176,6 +1213,14 @@ async function showAdmin() {
   const now = new Date();
   document.getElementById('adminDate').textContent =
     now.toLocaleDateString('es-MX', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  // Restore all tabs and buttons (in case consultor was active before)
+  document.querySelectorAll('.admin-tabs .tab').forEach(t => t.style.display = '');
+  const manualBtn = document.querySelector('[onclick="window.openManualModal()"]');
+  if (manualBtn) manualBtn.style.display = '';
+  const addBtn = document.querySelector('[onclick="window.showAddCollab()"]');
+  if (addBtn) addBtn.style.display = '';
+  const inactBtn = document.querySelector('[onclick="window.showInactiveCollabs()"]');
+  if (inactBtn) inactBtn.style.display = '';
   loadConfig();
   await loadCollabs();
   await loadRecordsFromDB();
@@ -1398,7 +1443,7 @@ async function loadEmpPhotos() {
 function renderAdmin() {
   const today = getAllRecordsToday();
   const allEmps = COLLABS.length > 0 
-    ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.active !== false) 
+    ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.active !== false) 
     : DEMO_USERS.filter(u => u.role === 'emp');
 
   let present=0, absent=0, late=0, extraMin=0;
@@ -1808,7 +1853,7 @@ async function renderCollabList() {
       <div class="emp-avatar" style="background:${c.role==='admin'?'linear-gradient(135deg,#2B4EAE,#1a3a8a)':'linear-gradient(135deg,#C41230,#a00e25)'}">${c.name ? c.name[0].toUpperCase() : '?'}</div>
       <div class="emp-info">
         <div class="emp-name">${c.name}</div>
-        <div class="emp-detail">@${c.user} · <span style="color:${c.role==='admin'?'#2B4EAE':'#C41230'};font-weight:600">${c.role==='admin'?'Admin':c.role==='enroller'?'Enrolador':'Empleado'}</span>${c.office?' · <span style="color:#6366f1">🏢 Oficina</span>':''}${c.saitNum?' · SAIT #'+c.saitNum:''}${c.hireDate?' · Ingreso: '+c.hireDate:''} · ${hasFace?'<span style="color:#2B4EAE">🤳 Rostro registrado</span>':'<span style="color:#e8a020">⚠️ Sin rostro</span>'}</div>
+        <div class="emp-detail">@${c.user} · <span style="color:${c.role==='admin'?'#2B4EAE':c.role==='consultor'?'#6366f1':'#C41230'};font-weight:600">${c.role==='admin'?'Admin':c.role==='enroller'?'Enrolador':c.role==='consultor'?'Consultor':'Empleado'}</span>${c.office?' · <span style="color:#6366f1">🏢 Oficina</span>':''}${c.saitNum?' · SAIT #'+c.saitNum:''}${c.hireDate?' · Ingreso: '+c.hireDate:''} · ${hasFace?'<span style="color:#2B4EAE">🤳 Rostro registrado</span>':'<span style="color:#e8a020">⚠️ Sin rostro</span>'}</div>
       </div>
       <div style="display:flex;gap:8px">
         <button onclick="window.editCollab('${c.id}')" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-size:12px;cursor:pointer">Editar</button>
@@ -1977,12 +2022,15 @@ function selectRole(role) {
   document.getElementById('collabRole').value = role;
   const empBtn = document.getElementById('roleEmp');
   const adminBtn = document.getElementById('roleAdmin');
+  const consultorBtn = document.getElementById('roleConsultor');
+  // Reset all
+  [empBtn, adminBtn, consultorBtn].forEach(b => { if(b){ b.style.border = '1px solid var(--border)'; b.style.background = 'transparent'; b.style.color = 'var(--muted)'; }});
   if (role === 'emp') {
     empBtn.style.border = '2px solid #C41230'; empBtn.style.background = 'rgba(196,18,48,0.1)'; empBtn.style.color = '#C41230';
-    adminBtn.style.border = '1px solid var(--border)'; adminBtn.style.background = 'transparent'; adminBtn.style.color = 'var(--muted)';
-  } else {
+  } else if (role === 'admin') {
     adminBtn.style.border = '2px solid #2B4EAE'; adminBtn.style.background = 'rgba(43,78,174,0.1)'; adminBtn.style.color = '#2B4EAE';
-    empBtn.style.border = '1px solid var(--border)'; empBtn.style.background = 'transparent'; empBtn.style.color = 'var(--muted)';
+  } else if (role === 'consultor') {
+    if(consultorBtn){ consultorBtn.style.border = '2px solid #6366f1'; consultorBtn.style.background = 'rgba(99,102,241,0.1)'; consultorBtn.style.color = '#6366f1'; }
   }
 }
 
@@ -1997,7 +2045,7 @@ async function openManualModal() {
   if (!COLLABS.length) await loadCollabs();
   const sel = document.getElementById('manualEmp');
   sel.innerHTML = '<option value="">Selecciona un colaborador</option>';
-  const emps = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller');
+  const emps = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor');
   emps.forEach(emp => {
     const opt = document.createElement('option');
     opt.value = emp.user; opt.textContent = emp.name;
@@ -2114,7 +2162,7 @@ async function loadNomina() {
     const q = query(collection(db, 'records'), where('date', '>=', from), where('date', '<=', to));
     const snap = await getDocs(q);
     NOMINA_RECORDS = snap.docs.map(d => d.data());
-    NOMINA_EMPS = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.active !== false);
+    NOMINA_EMPS = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.active !== false);
     renderNomina(from, to);
     document.getElementById('nominaContent').style.display = 'block';
     showToast('✅ Incidencias cargadas', 'success');
@@ -3103,7 +3151,7 @@ async function generateReport() {
 }
 
 function renderReportDashboard(from, to) {
-  const emps = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.active !== false) : DEMO_USERS.filter(u => u.role === 'emp');
+  const emps = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.active !== false) : DEMO_USERS.filter(u => u.role === 'emp');
   const workDays = CONFIG.workDays || [1,2,3,4,5];
   const dates = [];
   let cur = new Date(from + 'T12:00:00');
@@ -3198,7 +3246,7 @@ function exportRangeCSV() { exportIncidencesCSV(); }
 
 function exportIncidencesCSV() {
   if (!REPORT_RECORDS.length) { showToast('Genera un reporte primero', 'warn'); return; }
-  const emps = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.active !== false) : DEMO_USERS.filter(u => u.role === 'emp');
+  const emps = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.active !== false) : DEMO_USERS.filter(u => u.role === 'emp');
   const from = document.getElementById('rptFrom').value;
   const to   = document.getElementById('rptTo').value;
 
@@ -3280,6 +3328,7 @@ async function captureAndSavePhoto(userId, videoElement) {
 //  EXPOSE TO WINDOW (required for type="module")
 // ════════════════════════════════
 window.doLogin = doLogin;
+window.showConsultor = showConsultor;
 window.logout = logout;
 window.registerCheck = registerCheck;
 window.switchTab = switchTab;
