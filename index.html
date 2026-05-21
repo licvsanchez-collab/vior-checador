@@ -1167,7 +1167,7 @@ function showConsultor() {
   // Hide tabs not available to consultor
   document.querySelectorAll('.admin-tabs .tab').forEach(t => {
     const txt = t.textContent.trim().toLowerCase();
-    if (txt === 'config' || txt === 'vacaciones') t.style.display = 'none';
+    if (txt === 'config' || txt === 'vacaciones' || txt === 'equipo') t.style.display = 'none';
     else t.style.display = '';
   });
   // Hide action buttons
