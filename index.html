@@ -1367,7 +1367,7 @@ async function registerCheck(type) {
       const workDays = CONFIG.workDays || [1,2,3,4,5];
       const todayDow = new Date().getDay();
       const isWorkday = workDays.includes(todayDow);
-      const lunchMin = CONFIG.lunchMin || 60; // 1 hour lunch break
+      const lunchMin = isWorkday ? (CONFIG.lunchMin || 60) : 0; // no lunch deduction on weekends
       rec.workedMin = Math.max(0, worked - lunchMin);
       if (!isWorkday) {
         rec.extraMin = rec.workedMin;
@@ -2105,10 +2105,12 @@ async function saveManualRecord() {
         const rawEntry = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
         const effectiveEntry = Math.max(rawEntry, timeToMinutes(CONFIG.startTime));
         const exitMins = timeToMinutes(time24);
-        const lunchMin = CONFIG.lunchMin || 60;
+        const manualDow = new Date(date + 'T12:00:00').getDay();
+        const isManualWorkday = (CONFIG.workDays || [1,2,3,4,5]).includes(manualDow);
+        const lunchMin = isManualWorkday ? (CONFIG.lunchMin || 60) : 0;
         rec.workedMin = Math.max(0, exitMins - effectiveEntry - lunchMin);
         const overMin = exitMins - timeToMinutes(CONFIG.endTime);
-        rec.extraMin = overMin >= 30 ? overMin : 0;
+        rec.extraMin = isManualWorkday ? (overMin >= 30 ? overMin : 0) : rec.workedMin;
       }
     }
     await setDoc(doc(db, 'records', String(rec.id)), rec);
@@ -2683,9 +2685,12 @@ async function registerFacialCheck(match) {
       const rawEntry = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
       const effectiveEntry = Math.max(rawEntry, timeToMinutes(CONFIG.startTime));
       const exitMins = timeToMinutes(timeStr24);
-      rec.workedMin = Math.max(0, exitMins - effectiveEntry - (CONFIG.lunchMin || 60));
+      const facialDow = new Date(todayStr() + 'T12:00:00').getDay();
+      const isFacialWorkday = (CONFIG.workDays || [1,2,3,4,5]).includes(facialDow);
+      const facialLunch = isFacialWorkday ? (CONFIG.lunchMin || 60) : 0;
+      rec.workedMin = Math.max(0, exitMins - effectiveEntry - facialLunch);
       const overMin = exitMins - timeToMinutes(CONFIG.endTime);
-      rec.extraMin = overMin >= 30 ? overMin : 0;
+      rec.extraMin = isFacialWorkday ? (overMin >= 30 ? overMin : 0) : rec.workedMin;
     }
   }
 
