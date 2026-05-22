@@ -2243,6 +2243,9 @@ async function loadNomina() {
     // Load vacations so they count as worked days
     const vacSnap2 = await getDocs(collection(db, 'vacations'));
     window.NOMINA_VACATIONS = vacSnap2.docs.map(d => d.data()).filter(v => v.from <= to && v.to >= from);
+    // Load justificantes so they count as worked days
+    const justSnap = await getDocs(query(collection(db, 'justificantes'), where('date', '>=', from), where('date', '<=', to)));
+    window.NOMINA_JUSTIFICANTES = justSnap.docs.map(d => d.data());
     renderNomina(from, to);
     document.getElementById('nominaContent').style.display = 'block';
     showToast('✅ Incidencias cargadas', 'success');
@@ -2283,7 +2286,8 @@ function renderNomina(from, to) {
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
       const isVacDay = window.NOMINA_VACATIONS?.some(v => v.userId === emp.user && date >= v.from && date <= v.to);
-      if (isVacDay) { worked++; } // vacation counts as worked day for SAIT concept 130
+      const isJustif = window.NOMINA_JUSTIFICANTES?.some(j => j.userId === emp.user && j.date === date);
+      if (isVacDay || isJustif) { worked++; } // vacation/justified = worked day for SAIT concept 130
       else if (!entry) absent++;
       else { worked++; if (entry.late > 0) late++; if (exit?.extraMin) extraMin += exit.extraMin; }
     });
@@ -2351,8 +2355,9 @@ async function exportSAIT() {
       const entry = recs.find(r => r.type === 'entry');
       const exit  = recs.find(r => r.type === 'exit');
       const isVacDay = window.NOMINA_VACATIONS?.some(v => v.userId === emp.user && date >= v.from && date <= v.to);
-      if (isVacDay) {
-        workedDays++; // vacation = worked day for concept 130
+      const isJustifDay = window.NOMINA_JUSTIFICANTES?.some(j => j.userId === emp.user && j.date === date);
+      if (isVacDay || isJustifDay) {
+        workedDays++; // vacation/justified = worked day for concept 130
       } else if (entry) {
         workedDays++;
         if (exit?.extraMin) totalExtraMin += exit.extraMin;
