@@ -3287,17 +3287,17 @@ function renderReportDashboard(from, to) {
     if (workDays.includes(cur.getDay()) && !isHoliday(d)) dates.push(d);
     cur.setDate(cur.getDate() + 1);
   }
-  // Add weekend dates that have actual records
-  const weekendWithRecords = [...new Set(
-    REPORT_RECORDS
-      .filter(r => { const dow = new Date(r.date + 'T12:00:00').getDay(); return !workDays.includes(dow); })
-      .map(r => r.date)
-  )].filter(d => !dates.includes(d)).sort();
-  const allDates = [...dates, ...weekendWithRecords].sort();
+  // Weekend dates are computed per-employee below
   let totalPresent=0, totalAbsent=0, totalLate=0, totalExtraMin=0;
   const empRows = emps.map(emp => {
     let present=0, absent=0, late=0, extraMin=0;
-    const empDates = emp.hireDate ? allDates.filter(d => d >= emp.hireDate) : allDates;
+    const empWeekendDates = [...new Set(
+      REPORT_RECORDS
+        .filter(r => r.userId === emp.user && !workDays.includes(new Date(r.date+'T12:00:00').getDay()))
+        .map(r => r.date)
+    )].filter(d => !dates.includes(d)).sort();
+    const empAllDates = [...dates, ...empWeekendDates].sort();
+    const empDates = emp.hireDate ? empAllDates.filter(d => d >= emp.hireDate) : empAllDates;
     empDates.forEach(date => {
       const recs = REPORT_RECORDS.filter(r => r.userId === emp.user && r.date === date);
       const entry = recs.find(r => r.type === 'entry');
@@ -3351,7 +3351,13 @@ function renderReportDashboard(from, to) {
 
   // Full per-employee detail including absences
   const detailHtml = emps.map(emp => {
-    const empDates2 = emp.hireDate ? allDates.filter(d => d >= emp.hireDate) : allDates;
+    const empWeekendDates2 = [...new Set(
+      REPORT_RECORDS
+        .filter(r => r.userId === emp.user && !workDays.includes(new Date(r.date+'T12:00:00').getDay()))
+        .map(r => r.date)
+    )].filter(d => !dates.includes(d)).sort();
+    const empAllDates2 = [...dates, ...empWeekendDates2].sort();
+    const empDates2 = emp.hireDate ? empAllDates2.filter(d => d >= emp.hireDate) : empAllDates2;
     if (!empDates2.length) return '';
     const rows = empDates2.map(date => {
       const recs = REPORT_RECORDS.filter(r => r.userId === emp.user && r.date === date);
@@ -3647,17 +3653,17 @@ function drawEmpSection(doc, emp, empDates, y, W, margin, workDays) {
     if (emp.bonoAsistencia) {
       const aplica = absent === 0;
       doc.setFillColor(aplica ? 34 : 200, aplica ? 197 : 50, aplica ? 94 : 50);
-      doc.roundedRect(bx, y, 38, 7, 2, 2, 'F');
+      doc.roundedRect(bx, y, 46, 7, 2, 2, 'F');
       doc.setTextColor(255,255,255); doc.setFontSize(7);
-      doc.text((aplica ? '✓' : '✗') + ' Bono Asistencia', bx + 19, y + 4.5, { align: 'center' });
-      bx += 41;
+      doc.text((aplica ? '✓' : '✗') + ' Bono Asistencia', bx + 23, y + 4.5, { align: 'center' });
+      bx += 49;
     }
     if (emp.bonoPuntualidad) {
       const aplica = late === 0;
       doc.setFillColor(aplica ? 34 : 200, aplica ? 197 : 50, aplica ? 94 : 50);
-      doc.roundedRect(bx, y, 38, 7, 2, 2, 'F');
+      doc.roundedRect(bx, y, 46, 7, 2, 2, 'F');
       doc.setTextColor(255,255,255); doc.setFontSize(7);
-      doc.text((aplica ? '✓' : '✗') + ' Bono Puntualidad', bx + 19, y + 4.5, { align: 'center' });
+      doc.text((aplica ? '✓' : '✗') + ' Bono Puntualidad', bx + 23, y + 4.5, { align: 'center' });
     }
     y += 10;
   }
@@ -3727,14 +3733,17 @@ function exportPDFGrupal() {
     if (workDays.includes(cur.getDay()) && !isHoliday(d)) dates.push(d);
     cur.setDate(cur.getDate() + 1);
   }
-  const weekendDates = [...new Set(REPORT_RECORDS.filter(r => !workDays.includes(new Date(r.date+'T12:00:00').getDay())).map(r => r.date))].sort();
-  const allDates = [...dates, ...weekendDates].sort();
-
   const emps = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.active !== false);
   const { doc, margin, W } = buildPDFBase(from, to, 'Reporte Grupal de Asistencia');
   let y = 38;
   emps.forEach(emp => {
-    const empDates = emp.hireDate ? allDates.filter(d => d >= emp.hireDate) : allDates;
+    const empWeekendDates = [...new Set(
+      REPORT_RECORDS
+        .filter(r => r.userId === emp.user && !workDays.includes(new Date(r.date+'T12:00:00').getDay()))
+        .map(r => r.date)
+    )].filter(d => !dates.includes(d)).sort();
+    const empAllDates = [...dates, ...empWeekendDates].sort();
+    const empDates = emp.hireDate ? empAllDates.filter(d => d >= emp.hireDate) : empAllDates;
     y = drawEmpSection(doc, emp, empDates, y, W, margin, workDays);
     y += 4;
   });
@@ -3768,8 +3777,8 @@ function generatePDFIndividual() {
     if (workDays.includes(cur.getDay()) && !isHoliday(d)) dates.push(d);
     cur.setDate(cur.getDate() + 1);
   }
-  const weekendDates = [...new Set(REPORT_RECORDS.filter(r => !workDays.includes(new Date(r.date+'T12:00:00').getDay())).map(r => r.date))].sort();
-  const allDates = [...dates, ...weekendDates].sort();
+  const empWeekend = [...new Set(REPORT_RECORDS.filter(r => r.userId===emp.user && !workDays.includes(new Date(r.date+'T12:00:00').getDay())).map(r=>r.date))].filter(d=>!dates.includes(d)).sort();
+  const allDates = [...dates, ...empWeekend].sort();
   const empDates = emp.hireDate ? allDates.filter(d => d >= emp.hireDate) : allDates;
 
   const { doc, margin, W } = buildPDFBase(from, to, `Reporte Individual — ${emp.name}`);
