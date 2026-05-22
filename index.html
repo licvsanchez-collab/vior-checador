@@ -376,6 +376,7 @@
   .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 14px; }
   .empty-icon { font-size: 40px; margin-bottom: 12px; }
 </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -549,6 +550,17 @@
         <!-- Export buttons -->
         <div class="section-title">Exportar</div>
         <button class="export-btn" onclick="window.exportIncidencesCSV()">📊 Descargar Excel — Reporte de incidencias</button>
+        <div style="display:flex;gap:10px;margin-top:10px">
+          <button class="export-btn" onclick="window.exportPDFGrupal()" style="flex:1">📄 PDF — Reporte grupal</button>
+          <button class="export-btn" onclick="window.exportPDFIndividual()" style="flex:1">📄 PDF — Reporte individual</button>
+        </div>
+        <!-- Individual employee selector -->
+        <div id="pdfEmpSelector" style="display:none;margin-top:10px">
+          <select id="pdfEmpSelect" class="field-input">
+            <option value="">— Selecciona colaborador —</option>
+          </select>
+          <button class="save-btn" onclick="window.generatePDFIndividual()" style="margin-top:8px;width:100%">Generar PDF</button>
+        </div>
 
         <!-- Records list -->
         <div class="section-title" style="margin-top:8px">Detalle por colaborador</div>
@@ -813,6 +825,30 @@
         <input type="checkbox" id="collabActive" checked style="display:none">
         <div id="activeToggleBg" style="position:absolute;inset:0;background:#2B4EAE;border-radius:999px;transition:0.3s"></div>
         <div id="activeToggleKnob" style="position:absolute;left:23px;top:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border-radius:12px;padding:14px 16px;margin-bottom:12px">
+      <div>
+        <div style="font-size:14px;font-weight:500">🎯 Bono de asistencia</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Aparece en reporte PDF si no tuvo faltas</div>
+      </div>
+      <div onclick="window.toggleBonoAsistencia()" style="position:relative;display:inline-block;width:46px;height:26px;cursor:pointer">
+        <input type="checkbox" id="collabBonoAsistencia" style="display:none">
+        <div id="bonoAsistenciaBg" style="position:absolute;inset:0;background:#ccc;border-radius:999px;transition:0.3s"></div>
+        <div id="bonoAsistenciaKnob" style="position:absolute;left:3px;top:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border-radius:12px;padding:14px 16px;margin-bottom:20px">
+      <div>
+        <div style="font-size:14px;font-weight:500">⏰ Bono de puntualidad</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Aparece en reporte PDF si no tuvo retardos</div>
+      </div>
+      <div onclick="window.toggleBonoPuntualidad()" style="position:relative;display:inline-block;width:46px;height:26px;cursor:pointer">
+        <input type="checkbox" id="collabBonoPuntualidad" style="display:none">
+        <div id="bonoPuntualidadBg" style="position:absolute;inset:0;background:#ccc;border-radius:999px;transition:0.3s"></div>
+        <div id="bonoPuntualidadKnob" style="position:absolute;left:3px;top:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>
       </div>
     </div>
 
@@ -1875,6 +1911,10 @@ function showAddCollab() {
   document.getElementById('collabUser').disabled = false;
   const officeEl = document.getElementById('collabOffice');
   if (officeEl) { officeEl.checked = false; updateOfficeToggle(); }
+  const baEl = document.getElementById('collabBonoAsistencia');
+  if (baEl) { baEl.checked = false; updateBonoToggle('bonoAsistencia'); }
+  const bpEl = document.getElementById('collabBonoPuntualidad');
+  if (bpEl) { bpEl.checked = false; updateBonoToggle('bonoPuntualidad'); }
   const activeEl = document.getElementById('collabActive');
   if (activeEl) { activeEl.checked = true; updateActiveToggle(); }
   selectRole('emp');
@@ -1894,6 +1934,10 @@ function editCollab(id) {
   document.getElementById('collabUser').disabled = true;
   const officeEl2 = document.getElementById('collabOffice');
   if (officeEl2) { officeEl2.checked = !!c.office; updateOfficeToggle(); }
+  const baEl2 = document.getElementById('collabBonoAsistencia');
+  if (baEl2) { baEl2.checked = !!c.bonoAsistencia; updateBonoToggle('bonoAsistencia'); }
+  const bpEl2 = document.getElementById('collabBonoPuntualidad');
+  if (bpEl2) { bpEl2.checked = !!c.bonoPuntualidad; updateBonoToggle('bonoPuntualidad'); }
   const activeEl2 = document.getElementById('collabActive');
   if (activeEl2) { activeEl2.checked = c.active !== false; updateActiveToggle(); }
   selectRole(c.role || 'emp');
@@ -1914,10 +1958,12 @@ async function saveCollab() {
     const role = document.getElementById('collabRole').value || 'emp';
     const saitNum = parseInt(document.getElementById('collabSaitNum').value) || null;
     const office = document.getElementById('collabOffice')?.checked || false;
+    const bonoAsistencia = document.getElementById('collabBonoAsistencia')?.checked || false;
+    const bonoPuntualidad = document.getElementById('collabBonoPuntualidad')?.checked || false;
     const active = document.getElementById('collabActive')?.checked !== false;
     const hireDate = document.getElementById('collabHireDate')?.value || '';
     const hashedPinSave = await hashPin(pin);
-    const data = { name, user, pin: hashedPinSave, role, saitNum, office, active, hireDate, createdAt: new Date().toISOString() };
+    const data = { name, user, pin: hashedPinSave, role, saitNum, office, bonoAsistencia, bonoPuntualidad, active, hireDate, createdAt: new Date().toISOString() };
     const docId = editId || user;
     await setDoc(doc(db, 'users', docId), data);
     document.getElementById('collabModal').classList.remove('open');
@@ -1959,6 +2005,34 @@ function toggleOffice() {
   if (!cb) return;
   cb.checked = !cb.checked;
   updateOfficeToggle();
+}
+
+function updateBonoToggle(id) {
+  const cb = document.getElementById('collab' + id.charAt(0).toUpperCase() + id.slice(1));
+  const bg = document.getElementById(id + 'Bg');
+  const knob = document.getElementById(id + 'Knob');
+  if (!cb || !bg || !knob) return;
+  if (cb.checked) {
+    bg.style.background = '#C41230';
+    knob.style.left = '23px';
+  } else {
+    bg.style.background = '#ccc';
+    knob.style.left = '3px';
+  }
+}
+
+function toggleBonoAsistencia() {
+  const cb = document.getElementById('collabBonoAsistencia');
+  if (!cb) return;
+  cb.checked = !cb.checked;
+  updateBonoToggle('bonoAsistencia');
+}
+
+function toggleBonoPuntualidad() {
+  const cb = document.getElementById('collabBonoPuntualidad');
+  if (!cb) return;
+  cb.checked = !cb.checked;
+  updateBonoToggle('bonoPuntualidad');
 }
 
 function toggleActive() {
@@ -3485,6 +3559,226 @@ function closeJustificarModal() {
   if (btn) { btn.textContent = 'Guardar'; btn.disabled = true; }
 }
 
+// ════════════════════════════════
+//  PDF REPORTS
+// ════════════════════════════════
+function buildPDFBase(from, to, title) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = 210; const margin = 14;
+
+  // Header bar
+  doc.setFillColor(196, 18, 48);
+  doc.rect(0, 0, W, 22, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+  doc.text('VIOR STEEL', margin, 14);
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+  doc.text(title, W - margin, 14, { align: 'right' });
+
+  // Period subtitle
+  doc.setTextColor(80, 80, 80);
+  doc.setFontSize(8);
+  doc.text(`Período: ${from}  →  ${to}`, margin, 30);
+  doc.text(`Generado: ${new Date().toLocaleDateString('es-MX', {day:'2-digit',month:'long',year:'numeric'})}`, W - margin, 30, { align: 'right' });
+
+  // Divider
+  doc.setDrawColor(196, 18, 48);
+  doc.setLineWidth(0.4);
+  doc.line(margin, 33, W - margin, 33);
+
+  return { doc, y: 38, W, margin };
+}
+
+function drawEmpSection(doc, emp, empDates, y, W, margin, workDays) {
+  const pageH = 297;
+  // Employee name header
+  if (y > pageH - 40) { doc.addPage(); y = 20; }
+  doc.setFillColor(43, 78, 174);
+  doc.rect(margin, y, W - margin * 2, 8, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+  doc.text(emp.name, margin + 3, y + 5.5);
+  y += 11;
+
+  // Summary row
+  let present=0, absent=0, late=0, extraMin=0;
+  empDates.forEach(date => {
+    const recs = REPORT_RECORDS.filter(r => r.userId === emp.user && r.date === date);
+    const entry = recs.find(r => r.type === 'entry');
+    const exit  = recs.find(r => r.type === 'exit');
+    const isVac = window.REPORT_VACATIONS?.some(v => v.userId === emp.user && date >= v.from && date <= v.to);
+    const justif = window.REPORT_JUSTIFICANTES?.find(j => j.userId === emp.user && j.date === date);
+    const isWeekend = !workDays.includes(new Date(date + 'T12:00:00').getDay());
+    if (isVac || justif) { present++; }
+    else if (!entry && isWeekend) { /* skip */ }
+    else if (!entry) absent++;
+    else { present++; if (!isWeekend && entry.late > 0) late++; if (isWeekend && exit?.workedMin) extraMin += exit.workedMin; else if (!isWeekend && exit?.extraMin) extraMin += exit.extraMin; }
+  });
+
+  // Summary boxes
+  const boxW = (W - margin * 2) / 4;
+  const summaryItems = [
+    { label: 'Asistencias', value: present, color: [43,78,174] },
+    { label: 'Faltas', value: absent, color: [196,18,48] },
+    { label: 'Retardos', value: late, color: [232,160,32] },
+    { label: 'H. Extra', value: (extraMin/60).toFixed(1)+'h', color: [99,102,241] },
+  ];
+  summaryItems.forEach((item, i) => {
+    const x = margin + i * boxW;
+    doc.setFillColor(245, 245, 248);
+    doc.rect(x, y, boxW - 1, 12, 'F');
+    doc.setTextColor(...item.color);
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+    doc.text(String(item.value), x + boxW/2 - 0.5, y + 7, { align: 'center' });
+    doc.setTextColor(120, 120, 120);
+    doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+    doc.text(item.label, x + boxW/2 - 0.5, y + 11, { align: 'center' });
+  });
+  y += 15;
+
+  // Bonos
+  if (emp.bonoAsistencia || emp.bonoPuntualidad) {
+    if (y > pageH - 20) { doc.addPage(); y = 20; }
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+    doc.setTextColor(50, 50, 50);
+    doc.text('Bonos del período:', margin, y + 4);
+    let bx = margin + 32;
+    if (emp.bonoAsistencia) {
+      const aplica = absent === 0;
+      doc.setFillColor(aplica ? 34 : 200, aplica ? 197 : 50, aplica ? 94 : 50);
+      doc.roundedRect(bx, y, 38, 7, 2, 2, 'F');
+      doc.setTextColor(255,255,255); doc.setFontSize(7);
+      doc.text((aplica ? '✓' : '✗') + ' Bono Asistencia', bx + 19, y + 4.5, { align: 'center' });
+      bx += 41;
+    }
+    if (emp.bonoPuntualidad) {
+      const aplica = late === 0;
+      doc.setFillColor(aplica ? 34 : 200, aplica ? 197 : 50, aplica ? 94 : 50);
+      doc.roundedRect(bx, y, 38, 7, 2, 2, 'F');
+      doc.setTextColor(255,255,255); doc.setFontSize(7);
+      doc.text((aplica ? '✓' : '✗') + ' Bono Puntualidad', bx + 19, y + 4.5, { align: 'center' });
+    }
+    y += 10;
+  }
+
+  // Day-by-day table header
+  if (y > pageH - 20) { doc.addPage(); y = 20; }
+  doc.setFillColor(230, 230, 235);
+  doc.rect(margin, y, W - margin*2, 6, 'F');
+  doc.setTextColor(60,60,60); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+  const cols = [margin+2, margin+28, margin+60, margin+90, margin+118, margin+142];
+  doc.text('Fecha', cols[0], y+4);
+  doc.text('Entrada', cols[1], y+4);
+  doc.text('Salida', cols[2], y+4);
+  doc.text('Trabajado', cols[3], y+4);
+  doc.text('Extra', cols[4], y+4);
+  doc.text('Incidencia', cols[5], y+4);
+  y += 7;
+
+  // Day rows
+  empDates.forEach((date, i) => {
+    if (y > pageH - 12) { doc.addPage(); y = 20; }
+    const recs = REPORT_RECORDS.filter(r => r.userId === emp.user && r.date === date);
+    const entry = recs.find(r => r.type === 'entry');
+    const exit  = recs.find(r => r.type === 'exit');
+    const isVac = window.REPORT_VACATIONS?.some(v => v.userId === emp.user && date >= v.from && date <= v.to);
+    const justif = window.REPORT_JUSTIFICANTES?.find(j => j.userId === emp.user && j.date === date);
+    const isWeekend = !workDays.includes(new Date(date + 'T12:00:00').getDay());
+
+    doc.setFillColor(i % 2 === 0 ? 252 : 246, i % 2 === 0 ? 252 : 246, i % 2 === 0 ? 252 : 250);
+    doc.rect(margin, y, W - margin*2, 6, 'F');
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+
+    let incidencia = 'Asistencia'; let incColor = [60,60,60];
+    if (isVac) { incidencia = 'Vacaciones'; incColor = [43,78,174]; }
+    else if (justif) { incidencia = 'Justificada'; incColor = [99,102,241]; }
+    else if (!entry && isWeekend) { incidencia = '—'; incColor = [180,180,180]; }
+    else if (!entry) { incidencia = 'FALTA'; incColor = [196,18,48]; }
+    else if (isWeekend) { incidencia = 'Descanso trab.'; incColor = [232,120,32]; }
+    else if (entry.late > 0) { incidencia = `Retardo +${entry.late}m`; incColor = [232,160,32]; }
+
+    const extraVal = isWeekend ? (exit?.workedMin ? (exit.workedMin/60).toFixed(1)+'h' : '—') : (exit?.extraMin > 0 ? (exit.extraMin/60).toFixed(1)+'h' : '—');
+
+    doc.setTextColor(80,80,80);
+    doc.text(date, cols[0], y+4);
+    doc.text(entry?.time || '—', cols[1], y+4);
+    doc.text(exit?.time || '—', cols[2], y+4);
+    doc.text(exit?.workedMin ? (exit.workedMin/60).toFixed(1)+'h' : '—', cols[3], y+4);
+    doc.text(extraVal, cols[4], y+4);
+    doc.setTextColor(...incColor); doc.setFont('helvetica', 'bold');
+    doc.text(incidencia, cols[5], y+4);
+    y += 6;
+  });
+
+  return y + 4;
+}
+
+function exportPDFGrupal() {
+  if (!REPORT_RECORDS) { showToast('Genera el reporte primero', 'warn'); return; }
+  const from = document.getElementById('rptFrom').value;
+  const to   = document.getElementById('rptTo').value;
+  const workDays = CONFIG.workDays || [1,2,3,4,5];
+  const dates = [];
+  let cur = new Date(from + 'T12:00:00');
+  const end = new Date(to + 'T12:00:00');
+  while (cur <= end) {
+    const d = dateToStr(cur);
+    if (workDays.includes(cur.getDay()) && !isHoliday(d)) dates.push(d);
+    cur.setDate(cur.getDate() + 1);
+  }
+  const weekendDates = [...new Set(REPORT_RECORDS.filter(r => !workDays.includes(new Date(r.date+'T12:00:00').getDay())).map(r => r.date))].sort();
+  const allDates = [...dates, ...weekendDates].sort();
+
+  const emps = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.active !== false);
+  const { doc, margin, W } = buildPDFBase(from, to, 'Reporte Grupal de Asistencia');
+  let y = 38;
+  emps.forEach(emp => {
+    const empDates = emp.hireDate ? allDates.filter(d => d >= emp.hireDate) : allDates;
+    y = drawEmpSection(doc, emp, empDates, y, W, margin, workDays);
+    y += 4;
+  });
+  doc.save(`Reporte_Grupal_${from}_${to}.pdf`);
+  showToast('📄 PDF grupal descargado', 'success');
+}
+
+function exportPDFIndividual() {
+  if (!REPORT_RECORDS) { showToast('Genera el reporte primero', 'warn'); return; }
+  const selector = document.getElementById('pdfEmpSelector');
+  const select = document.getElementById('pdfEmpSelect');
+  const emps = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.active !== false);
+  select.innerHTML = '<option value="">— Selecciona colaborador —</option>' +
+    emps.map(e => `<option value="${e.user}">${e.name}</option>`).join('');
+  selector.style.display = selector.style.display === 'none' ? 'block' : 'none';
+}
+
+function generatePDFIndividual() {
+  const userId = document.getElementById('pdfEmpSelect').value;
+  if (!userId) { showToast('Selecciona un colaborador', 'warn'); return; }
+  const emp = COLLABS.find(c => c.user === userId);
+  if (!emp) return;
+  const from = document.getElementById('rptFrom').value;
+  const to   = document.getElementById('rptTo').value;
+  const workDays = CONFIG.workDays || [1,2,3,4,5];
+  const dates = [];
+  let cur = new Date(from + 'T12:00:00');
+  const end = new Date(to + 'T12:00:00');
+  while (cur <= end) {
+    const d = dateToStr(cur);
+    if (workDays.includes(cur.getDay()) && !isHoliday(d)) dates.push(d);
+    cur.setDate(cur.getDate() + 1);
+  }
+  const weekendDates = [...new Set(REPORT_RECORDS.filter(r => !workDays.includes(new Date(r.date+'T12:00:00').getDay())).map(r => r.date))].sort();
+  const allDates = [...dates, ...weekendDates].sort();
+  const empDates = emp.hireDate ? allDates.filter(d => d >= emp.hireDate) : allDates;
+
+  const { doc, margin, W } = buildPDFBase(from, to, `Reporte Individual — ${emp.name}`);
+  drawEmpSection(doc, emp, empDates, 38, W, margin, workDays);
+  doc.save(`Reporte_${emp.name.replace(/ /g,'_')}_${from}_${to}.pdf`);
+  document.getElementById('pdfEmpSelector').style.display = 'none';
+  showToast(`📄 PDF de ${emp.name} descargado`, 'success');
+}
+
 window.doLogin = doLogin;
 window.showConsultor = showConsultor;
 window.logout = logout;
@@ -3506,6 +3800,12 @@ window.removeHoliday = removeHoliday;
 window.showAddCollab = showAddCollab;
 window.selectRole = selectRole;
 window.updateOfficeToggle = updateOfficeToggle;
+window.updateBonoToggle = updateBonoToggle;
+window.toggleBonoAsistencia = toggleBonoAsistencia;
+window.toggleBonoPuntualidad = toggleBonoPuntualidad;
+window.exportPDFGrupal = exportPDFGrupal;
+window.exportPDFIndividual = exportPDFIndividual;
+window.generatePDFIndividual = generatePDFIndividual;
 window.toggleOffice = toggleOffice;
 window.toggleActive = toggleActive;
 window.updateActiveToggle = updateActiveToggle;
