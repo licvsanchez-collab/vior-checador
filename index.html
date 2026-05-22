@@ -2110,7 +2110,7 @@ async function saveManualRecord() {
         const lunchMin = isManualWorkday ? (CONFIG.lunchMin || 60) : 0;
         rec.workedMin = Math.max(0, exitMins - effectiveEntry - lunchMin);
         const overMin = exitMins - timeToMinutes(CONFIG.endTime);
-        rec.extraMin = isManualWorkday ? (overMin >= 30 ? overMin : 0) : rec.workedMin;
+        rec.extraMin = emp.office ? 0 : isManualWorkday ? (overMin >= 30 ? overMin : 0) : rec.workedMin;
       }
     }
     await setDoc(doc(db, 'records', String(rec.id)), rec);
