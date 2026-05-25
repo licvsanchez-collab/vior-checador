@@ -378,10 +378,6 @@
 
   /* ── Tablet portrait fallback ── */
   @media (orientation: portrait) {
-    #facialIdle { flex-direction: column !important; }
-    #facialIdle > div:first-child { border-right: none !important; border-bottom: 1px solid rgba(255,255,255,0.07); flex: none; height: 52vh; padding: 20px; }
-    #facialIdle > div:last-child { flex: none; height: 48vh; padding: 20px; }
-    #facialClock { font-size: 48px !important; }
     #facialScanning > div { flex-direction: column !important; }
     #facialScanning > div > div:first-child { flex: none !important; height: 55vh; }
     #facialScanning > div > div:last-child { width: 100% !important; min-width: unset !important; height: 45vh; padding: 12px 20px; flex-direction: row; justify-content: space-around; flex-wrap: wrap; align-items: center; }
@@ -934,22 +930,15 @@
   </div>
 
   <!-- ── IDLE STATE ── -->
-  <div id="facialIdle" style="display:flex;width:100vw;height:100vh;background:linear-gradient(135deg,#0f1320 0%,#1a1f2e 60%,#1e2a40 100%);overflow:hidden">
-    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;border-right:1px solid rgba(255,255,255,0.07)">
-      <img src="" id="facialLogo" style="width:300px;margin-bottom:28px;cursor:pointer;filter:drop-shadow(0 4px 24px rgba(0,0,0,0.5))" alt="Vior Steel" onclick="window.facialLogoTap()">
-      <div style="font-family:'Syne',sans-serif;font-size:13px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:3px;margin-bottom:24px">Sistema de Asistencia</div>
-      <div id="facialClock" style="font-family:'Syne',sans-serif;font-size:72px;font-weight:800;color:#fff;letter-spacing:-3px;line-height:1">--:--</div>
-      <div id="facialDate" style="font-size:17px;color:rgba(255,255,255,0.5);margin-top:10px;margin-bottom:40px">--</div>
-      <button onclick="window.startFacialScan()" style="background:linear-gradient(135deg,#C41230,#a00e25);border:none;border-radius:18px;padding:22px 60px;color:#fff;font-family:'Syne',sans-serif;font-size:20px;font-weight:800;cursor:pointer;box-shadow:0 8px 32px rgba(196,18,48,0.45);transition:transform 0.1s" onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform='scale(1)'" ontouchstart="this.style.transform='scale(0.97)'" ontouchend="this.style.transform='scale(1)'">
-        👤 Registrar asistencia
-      </button>
-      <div style="margin-top:20px;font-size:12px;color:rgba(255,255,255,0.2)">Toca para iniciar</div>
-    </div>
-    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;background:rgba(196,18,48,0.04)">
-      <div style="width:180px;height:180px;border-radius:50%;border:2px dashed rgba(196,18,48,0.3);display:flex;align-items:center;justify-content:center;font-size:80px;margin-bottom:24px;box-shadow:0 0 60px rgba(196,18,48,0.1)">👤</div>
-      <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:rgba(255,255,255,0.6);text-align:center">Acerca tu rostro<br>a la cámara</div>
-      <div style="margin-top:16px;font-size:14px;color:rgba(255,255,255,0.25);text-align:center">El reconocimiento es automático</div>
-    </div>
+  <div id="facialIdle" style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100vw;height:100vh;background:linear-gradient(180deg,#0a0d14 0%,#111827 100%);overflow:hidden;padding:32px;box-sizing:border-box">
+    <img src="" id="facialLogo" style="width:min(480px,75vw);margin-bottom:20px;cursor:pointer;filter:drop-shadow(0 4px 24px rgba(0,0,0,0.6))" alt="Vior Steel" onclick="window.facialLogoTap()">
+    <div style="font-family:'Syne',sans-serif;font-size:clamp(16px,2.5vw,22px);color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:5px;margin-bottom:28px">Sistema de Asistencia</div>
+    <div id="facialClock" style="font-family:'Syne',sans-serif;font-size:clamp(72px,14vw,130px);font-weight:800;color:#fff;letter-spacing:-4px;line-height:1;margin-bottom:6px">--:--</div>
+    <div id="facialDate" style="font-size:clamp(14px,2vw,18px);color:rgba(255,255,255,0.45);margin-bottom:52px">--</div>
+    <button onclick="window.startFacialScan()" style="background:linear-gradient(135deg,#C41230,#a00e25);border:none;border-radius:18px;padding:22px 70px;color:#fff;font-family:'Syne',sans-serif;font-size:clamp(16px,2.5vw,20px);font-weight:800;cursor:pointer;box-shadow:0 8px 40px rgba(196,18,48,0.5);transition:transform 0.1s" onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform='scale(1)'" ontouchstart="this.style.transform='scale(0.97)'" ontouchend="this.style.transform='scale(1)'">
+      👤 Registrar asistencia
+    </button>
+    <div style="margin-top:20px;font-size:12px;color:rgba(255,255,255,0.18)">Toca para iniciar</div>
   </div>
 
   <!-- ── SCANNING STATE ── -->
@@ -2641,7 +2630,9 @@ async function showFacialScreen() {
 
 function updateFacialClock() {
   const now = new Date();
-  const timeStr = now.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'});
+  const h = String(now.getHours()).padStart(2,'0');
+  const m = String(now.getMinutes()).padStart(2,'0');
+  const timeStr = `${h}:${m}`;
   const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
   const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const dateStr = `${days[now.getDay()]}, ${now.getDate()} de ${months[now.getMonth()]} de ${now.getFullYear()}`;
@@ -3816,20 +3807,17 @@ function generatePDFIndividual() {
 //  SESSION RESTORE ON RELOAD
 // ════════════════════════════════
 async function tryRestoreSession() {
-  // Tablet session restores directly
   if (localStorage.getItem('tabletSession') === '1') {
     currentUser = DEMO_USERS.find(x => x.role === 'tablet');
     await loadConfigFromDB();
     showFacialScreen();
     return;
   }
-  // Regular user session
   const saved = localStorage.getItem('viorSession');
   if (!saved) return;
   try {
     const parsed = JSON.parse(saved);
     if (!parsed?.user) return;
-    // Re-verify user is still active in Firebase
     const snap = await getDocs(query(collection(db, 'users'), where('user', '==', parsed.user)));
     if (snap.empty) { localStorage.removeItem('viorSession'); return; }
     const data = snap.docs[0].data();
@@ -3842,12 +3830,8 @@ async function tryRestoreSession() {
     else if (data.role === 'consultor') showConsultor();
     else if (data.role === 'enroller') showEnroller();
     else showEmployee();
-  } catch(e) {
-    localStorage.removeItem('viorSession');
-  }
+  } catch(e) { localStorage.removeItem('viorSession'); }
 }
-
-// Run session restore when page loads
 tryRestoreSession();
 
 window.doLogin = doLogin;
@@ -3953,4 +3937,16 @@ window.deleteFace = deleteFace;
 </div>
 
 </body>
-</html>
+</html>  <!-- ── IDLE STATE ── -->
+  <div id="facialIdle" style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100vw;height:100vh;background:linear-gradient(180deg,#0a0d14 0%,#111827 100%);overflow:hidden;padding:32px;box-sizing:border-box">
+    <img src="" id="facialLogo" style="width:min(480px,80vw);margin-bottom:20px;cursor:pointer;filter:drop-shadow(0 4px 24px rgba(0,0,0,0.6))" alt="Vior Steel" onclick="window.facialLogoTap()">
+    <div style="font-family:'Syne',sans-serif;font-size:clamp(16px,2.5vw,22px);color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:5px;margin-bottom:28px">Sistema de Asistencia</div>
+    <div id="facialClock" style="font-family:'Syne',sans-serif;font-size:clamp(72px,14vw,130px);font-weight:800;color:#fff;letter-spacing:-4px;line-height:1;margin-bottom:6px">--:--</div>
+    <div id="facialDate" style="font-size:clamp(14px,2vw,18px);color:rgba(255,255,255,0.45);margin-bottom:52px">--</div>
+    <button onclick="window.startFacialScan()" style="background:linear-gradient(135deg,#C41230,#a00e25);border:none;border-radius:18px;padding:22px 70px;color:#fff;font-family:'Syne',sans-serif;font-size:clamp(16px,2.5vw,20px);font-weight:800;cursor:pointer;box-shadow:0 8px 40px rgba(196,18,48,0.5);transition:transform 0.1s;letter-spacing:0.5px" onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform='scale(1)'" ontouchstart="this.style.transform='scale(0.97)'" ontouchend="this.style.transform='scale(1)'">
+      👤 Registrar asistencia
+    </button>
+    <div style="margin-top:20px;font-size:12px;color:rgba(255,255,255,0.18)">Toca para iniciar</div>
+  </div>
+
+  
