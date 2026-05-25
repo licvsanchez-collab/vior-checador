@@ -376,7 +376,8 @@
   .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 14px; }
   .empty-icon { font-size: 40px; margin-bottom: 12px; }
 
-  /* ── Tablet portrait fallback ── */
+  /* Block scroll in tablet mode */
+  body.tablet-mode { overflow: hidden !important; position: fixed; width: 100%; height: 100%; }
   @media (orientation: portrait) {
     #facialScanning > div { flex-direction: column !important; }
     #facialScanning > div > div:first-child { flex: none !important; height: 55vh; }
@@ -930,19 +931,19 @@
   </div>
 
   <!-- ── IDLE STATE ── -->
-  <div id="facialIdle" style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100vw;height:100vh;background:linear-gradient(180deg,#0a0d14 0%,#111827 100%);overflow:hidden;padding:32px;box-sizing:border-box">
-    <img src="" id="facialLogo" style="width:min(480px,75vw);margin-bottom:20px;cursor:pointer;filter:drop-shadow(0 4px 24px rgba(0,0,0,0.6))" alt="Vior Steel" onclick="window.facialLogoTap()">
-    <div style="font-family:'Syne',sans-serif;font-size:clamp(16px,2.5vw,22px);color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:5px;margin-bottom:28px">Sistema de Asistencia</div>
-    <div id="facialClock" style="font-family:'Syne',sans-serif;font-size:clamp(72px,14vw,130px);font-weight:800;color:#fff;letter-spacing:-4px;line-height:1;margin-bottom:6px">--:--</div>
-    <div id="facialDate" style="font-size:clamp(14px,2vw,18px);color:rgba(255,255,255,0.45);margin-bottom:52px">--</div>
-    <button onclick="window.startFacialScan()" style="background:linear-gradient(135deg,#C41230,#a00e25);border:none;border-radius:18px;padding:22px 70px;color:#fff;font-family:'Syne',sans-serif;font-size:clamp(16px,2.5vw,20px);font-weight:800;cursor:pointer;box-shadow:0 8px 40px rgba(196,18,48,0.5);transition:transform 0.1s" onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform='scale(1)'" ontouchstart="this.style.transform='scale(0.97)'" ontouchend="this.style.transform='scale(1)'">
+  <div id="facialIdle" style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100vw;height:100vh;min-height:100vh;max-height:100vh;overflow:hidden;background:linear-gradient(180deg,#0a0d14 0%,#111827 100%);padding:32px;box-sizing:border-box;touch-action:none">
+    <img src="" id="facialLogo" style="width:min(480px,75vw);margin-bottom:20px;cursor:pointer;mix-blend-mode:lighten" alt="Vior Steel" onclick="window.facialLogoTap()">
+    <div style="font-family:'Syne',sans-serif;font-size:clamp(15px,2.2vw,20px);color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:5px;margin-bottom:24px">Sistema de Asistencia</div>
+    <div id="facialClock" style="font-family:'Syne',sans-serif;font-size:clamp(64px,13vw,120px);font-weight:800;color:#fff;letter-spacing:-3px;line-height:1;margin-bottom:6px">--:--</div>
+    <div id="facialDate" style="font-size:clamp(13px,1.8vw,17px);color:rgba(255,255,255,0.4);margin-bottom:48px">--</div>
+    <button onclick="window.startFacialScan()" style="background:linear-gradient(135deg,#C41230,#a00e25);border:none;border-radius:18px;padding:22px 70px;color:#fff;font-family:'Syne',sans-serif;font-size:clamp(16px,2.2vw,20px);font-weight:800;cursor:pointer;box-shadow:0 8px 40px rgba(196,18,48,0.5);transition:transform 0.1s" onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform='scale(1)'" ontouchstart="this.style.transform='scale(0.97)'" ontouchend="this.style.transform='scale(1)'">
       👤 Registrar asistencia
     </button>
-    <div style="margin-top:20px;font-size:12px;color:rgba(255,255,255,0.18)">Toca para iniciar</div>
+    <div style="margin-top:18px;font-size:12px;color:rgba(255,255,255,0.18)">Toca para iniciar</div>
   </div>
 
   <!-- ── SCANNING STATE ── -->
-  <div id="facialScanning" style="display:none;width:100vw;height:100vh;background:#0f1320;overflow:hidden">
+  <div id="facialScanning" style="display:none;width:100vw;height:100vh;max-height:100vh;overflow:hidden;background:#0f1320;touch-action:none">
     <div style="display:flex;width:100%;height:100%">
       <div style="flex:1;position:relative;background:#000">
         <video id="facialVideo" autoplay muted playsinline style="width:100%;height:100%;object-fit:cover;display:block"></video>
@@ -951,10 +952,10 @@
         <div id="facialScanStatus" style="position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);color:#fff;padding:10px 24px;border-radius:999px;font-size:15px;white-space:nowrap;border:1px solid rgba(255,255,255,0.15)">Coloca tu rostro en el óvalo</div>
         <button onclick="window.cancelFacialScan()" style="position:absolute;top:20px;right:20px;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:10px 20px;color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer">✕ Cancelar</button>
       </div>
-      <div style="width:42%;min-width:320px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;background:linear-gradient(135deg,#1a1f2e,#0f1320);border-left:1px solid rgba(255,255,255,0.07)">
-        <img src="" id="facialLogoScan" style="width:160px;margin-bottom:28px;filter:drop-shadow(0 2px 12px rgba(0,0,0,0.4))" alt="Vior Steel">
+      <div style="width:42%;min-width:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px;background:linear-gradient(135deg,#1a1f2e,#0f1320);border-left:1px solid rgba(255,255,255,0.07)">
+        <img src="" id="facialLogoScan" style="width:160px;margin-bottom:24px;mix-blend-mode:lighten" alt="Vior Steel">
         <div id="facialClockScan" style="font-family:'Syne',sans-serif;font-size:48px;font-weight:800;color:#fff;letter-spacing:-2px;margin-bottom:4px">--:--</div>
-        <div id="facialDateScan" style="font-size:14px;color:rgba(255,255,255,0.4);margin-bottom:36px">--</div>
+        <div id="facialDateScan" style="font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:32px">--</div>
         <div id="facialResult" style="width:100%;display:flex;flex-direction:column;align-items:center;text-align:center">
           <div style="width:90px;height:90px;border-radius:50%;background:rgba(255,255,255,0.05);border:2px dashed rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:16px">👤</div>
           <div style="color:rgba(255,255,255,0.35);font-size:15px">Esperando reconocimiento…</div>
@@ -1192,7 +1193,7 @@ function logout() {
   stopFacialCamera();
   localStorage.removeItem('tabletSession');
   currentUser = null; userGeo = null; geoOk = false;
-  localStorage.removeItem('viorSession');
+  document.body.classList.remove('tablet-mode');
   RECORDS = [];
   show('loginScreen');
   document.getElementById('loginPin').value = '';
@@ -2618,6 +2619,7 @@ async function confirmFacialExit() {
 }
 
 async function showFacialScreen() {
+  document.body.classList.add('tablet-mode');
   show('facialScreen');
   // Set logo
   const logoEl = document.getElementById('facialLogo');
@@ -3937,16 +3939,4 @@ window.deleteFace = deleteFace;
 </div>
 
 </body>
-</html>  <!-- ── IDLE STATE ── -->
-  <div id="facialIdle" style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100vw;height:100vh;background:linear-gradient(180deg,#0a0d14 0%,#111827 100%);overflow:hidden;padding:32px;box-sizing:border-box">
-    <img src="" id="facialLogo" style="width:min(480px,80vw);margin-bottom:20px;cursor:pointer;filter:drop-shadow(0 4px 24px rgba(0,0,0,0.6))" alt="Vior Steel" onclick="window.facialLogoTap()">
-    <div style="font-family:'Syne',sans-serif;font-size:clamp(16px,2.5vw,22px);color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:5px;margin-bottom:28px">Sistema de Asistencia</div>
-    <div id="facialClock" style="font-family:'Syne',sans-serif;font-size:clamp(72px,14vw,130px);font-weight:800;color:#fff;letter-spacing:-4px;line-height:1;margin-bottom:6px">--:--</div>
-    <div id="facialDate" style="font-size:clamp(14px,2vw,18px);color:rgba(255,255,255,0.45);margin-bottom:52px">--</div>
-    <button onclick="window.startFacialScan()" style="background:linear-gradient(135deg,#C41230,#a00e25);border:none;border-radius:18px;padding:22px 70px;color:#fff;font-family:'Syne',sans-serif;font-size:clamp(16px,2.5vw,20px);font-weight:800;cursor:pointer;box-shadow:0 8px 40px rgba(196,18,48,0.5);transition:transform 0.1s;letter-spacing:0.5px" onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform='scale(1)'" ontouchstart="this.style.transform='scale(0.97)'" ontouchend="this.style.transform='scale(1)'">
-      👤 Registrar asistencia
-    </button>
-    <div style="margin-top:20px;font-size:12px;color:rgba(255,255,255,0.18)">Toca para iniciar</div>
-  </div>
-
-  
+</html>
