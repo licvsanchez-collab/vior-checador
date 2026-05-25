@@ -376,7 +376,7 @@
   .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 14px; }
   .empty-icon { font-size: 40px; margin-bottom: 12px; }
 
-  body.tablet-mode { overflow: hidden !important; position: fixed; width: 100%; height: 100%; }
+
   @media (orientation: portrait) {
     #facialScanning > div { flex-direction: column !important; }
     #facialScanning > div > div:first-child { flex: none !important; height: 55vh; }
@@ -1192,7 +1192,6 @@ function logout() {
   stopFacialCamera();
   localStorage.removeItem('tabletSession');
   currentUser = null; userGeo = null; geoOk = false;
-  document.body.classList.remove('tablet-mode');
   RECORDS = [];
   show('loginScreen');
   document.getElementById('loginPin').value = '';
@@ -2618,7 +2617,6 @@ async function confirmFacialExit() {
 }
 
 async function showFacialScreen() {
-  document.body.classList.add('tablet-mode');
   show('facialScreen');
   // Set logo
   const logoEl = document.getElementById('facialLogo');
