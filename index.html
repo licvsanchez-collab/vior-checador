@@ -376,14 +376,18 @@
   .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 14px; }
   .empty-icon { font-size: 40px; margin-bottom: 12px; }
 
-  /* ── Tablet screen portrait fallback ── */
-  @media (orientation: portrait) and (max-width: 900px) {
+  /* ── Tablet portrait fallback ── */
+  @media (orientation: portrait) {
     #facialIdle { flex-direction: column !important; }
-    #facialIdle > div:first-child { border-right: none !important; border-bottom: 1px solid rgba(255,255,255,0.07); }
+    #facialIdle > div:first-child { border-right: none !important; border-bottom: 1px solid rgba(255,255,255,0.07); flex: none; height: 55vh; padding: 24px; }
+    #facialIdle > div:last-child { flex: none; height: 45vh; padding: 24px; }
+    #facialClock { font-size: 52px !important; }
     #facialScanning > div { flex-direction: column !important; }
     #facialScanning > div > div:first-child { flex: none !important; height: 55vh; }
-    #facialScanning > div > div:last-child { width: 100% !important; min-width: unset !important; padding: 20px !important; flex-direction: row !important; justify-content: space-around !important; }
-    #facialClockScan { font-size: 32px !important; }
+    #facialScanning > div > div:last-child { width: 100% !important; min-width: unset !important; height: 45vh; padding: 16px 24px; flex-direction: row; justify-content: space-around; flex-wrap: wrap; }
+    #facialClockScan { font-size: 28px !important; margin-bottom: 2px !important; }
+    #facialDateScan { font-size: 11px !important; margin-bottom: 12px !important; }
+    #facialLogoScan { width: 80px !important; margin-bottom: 8px !important; }
   }
 </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -931,20 +935,16 @@
 
   <!-- ── IDLE STATE ── -->
   <div id="facialIdle" style="display:flex;width:100vw;height:100vh;background:linear-gradient(135deg,#0f1320 0%,#1a1f2e 60%,#1e2a40 100%);overflow:hidden">
-
-    <!-- Left panel: branding -->
     <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;border-right:1px solid rgba(255,255,255,0.07)">
-      <img src="" id="facialLogo" style="width:260px;margin-bottom:28px;border-radius:16px;background:#fff;padding:20px;cursor:pointer;box-shadow:0 8px 40px rgba(0,0,0,0.4)" alt="Vior Steel" onclick="window.facialLogoTap()">
-      <div style="font-family:'Syne',sans-serif;font-size:13px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:3px;margin-bottom:32px">Sistema de Asistencia</div>
+      <img src="" id="facialLogo" style="width:300px;margin-bottom:28px;cursor:pointer;filter:drop-shadow(0 4px 24px rgba(0,0,0,0.5))" alt="Vior Steel" onclick="window.facialLogoTap()">
+      <div style="font-family:'Syne',sans-serif;font-size:13px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:3px;margin-bottom:24px">Sistema de Asistencia</div>
       <div id="facialClock" style="font-family:'Syne',sans-serif;font-size:72px;font-weight:800;color:#fff;letter-spacing:-3px;line-height:1">--:--</div>
-      <div id="facialDate" style="font-size:17px;color:rgba(255,255,255,0.5);margin-top:10px;margin-bottom:48px">--</div>
-      <button onclick="window.startFacialScan()" style="background:linear-gradient(135deg,#C41230,#a00e25);border:none;border-radius:18px;padding:22px 60px;color:#fff;font-family:'Syne',sans-serif;font-size:20px;font-weight:800;cursor:pointer;box-shadow:0 8px 32px rgba(196,18,48,0.45);transition:transform 0.1s;letter-spacing:0.5px" onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform='scale(1)'" ontouchstart="this.style.transform='scale(0.97)'" ontouchend="this.style.transform='scale(1)'">
+      <div id="facialDate" style="font-size:17px;color:rgba(255,255,255,0.5);margin-top:10px;margin-bottom:40px">--</div>
+      <button onclick="window.startFacialScan()" style="background:linear-gradient(135deg,#C41230,#a00e25);border:none;border-radius:18px;padding:22px 60px;color:#fff;font-family:'Syne',sans-serif;font-size:20px;font-weight:800;cursor:pointer;box-shadow:0 8px 32px rgba(196,18,48,0.45);transition:transform 0.1s" onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform='scale(1)'" ontouchstart="this.style.transform='scale(0.97)'" ontouchend="this.style.transform='scale(1)'">
         👤 Registrar asistencia
       </button>
       <div style="margin-top:20px;font-size:12px;color:rgba(255,255,255,0.2)">Toca para iniciar</div>
     </div>
-
-    <!-- Right panel: decorative / info -->
     <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;background:rgba(196,18,48,0.04)">
       <div style="width:180px;height:180px;border-radius:50%;border:2px dashed rgba(196,18,48,0.3);display:flex;align-items:center;justify-content:center;font-size:80px;margin-bottom:24px;box-shadow:0 0 60px rgba(196,18,48,0.1)">👤</div>
       <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:rgba(255,255,255,0.6);text-align:center">Acerca tu rostro<br>a la cámara</div>
@@ -955,33 +955,22 @@
   <!-- ── SCANNING STATE ── -->
   <div id="facialScanning" style="display:none;width:100vw;height:100vh;background:#0f1320;overflow:hidden">
     <div style="display:flex;width:100%;height:100%">
-
-      <!-- Left: Full camera -->
       <div style="flex:1;position:relative;background:#000">
         <video id="facialVideo" autoplay muted playsinline style="width:100%;height:100%;object-fit:cover;display:block"></video>
         <canvas id="facialCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none"></canvas>
-        <!-- Oval guide centered on camera feed -->
         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:45%;height:75%;border:3px solid rgba(196,18,48,0.9);border-radius:50%;pointer-events:none;box-shadow:0 0 0 4000px rgba(0,0,0,0.35),0 0 30px rgba(196,18,48,0.6)"></div>
-        <!-- Status pill -->
         <div id="facialScanStatus" style="position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);color:#fff;padding:10px 24px;border-radius:999px;font-size:15px;white-space:nowrap;border:1px solid rgba(255,255,255,0.15)">Coloca tu rostro en el óvalo</div>
-        <!-- Cancel button -->
         <button onclick="window.cancelFacialScan()" style="position:absolute;top:20px;right:20px;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:10px 20px;color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer">✕ Cancelar</button>
       </div>
-
-      <!-- Right: Info panel -->
       <div style="width:42%;min-width:320px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;background:linear-gradient(135deg,#1a1f2e,#0f1320);border-left:1px solid rgba(255,255,255,0.07)">
-        <!-- Logo -->
-        <img src="" id="facialLogoScan" style="width:140px;margin-bottom:32px;border-radius:12px;background:#fff;padding:12px;opacity:0.9" alt="Vior Steel">
-        <!-- Live clock -->
+        <img src="" id="facialLogoScan" style="width:160px;margin-bottom:28px;filter:drop-shadow(0 2px 12px rgba(0,0,0,0.4))" alt="Vior Steel">
         <div id="facialClockScan" style="font-family:'Syne',sans-serif;font-size:48px;font-weight:800;color:#fff;letter-spacing:-2px;margin-bottom:4px">--:--</div>
-        <div id="facialDateScan" style="font-size:14px;color:rgba(255,255,255,0.4);margin-bottom:40px">--</div>
-        <!-- Result area -->
+        <div id="facialDateScan" style="font-size:14px;color:rgba(255,255,255,0.4);margin-bottom:36px">--</div>
         <div id="facialResult" style="width:100%;display:flex;flex-direction:column;align-items:center;text-align:center">
           <div style="width:90px;height:90px;border-radius:50%;background:rgba(255,255,255,0.05);border:2px dashed rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:16px">👤</div>
           <div style="color:rgba(255,255,255,0.35);font-size:15px">Esperando reconocimiento…</div>
         </div>
       </div>
-
     </div>
   </div>
 
@@ -2642,7 +2631,7 @@ async function showFacialScreen() {
   // Set logo
   const logoEl = document.getElementById('facialLogo');
   const logoImg = document.querySelector('.logo-wrap img');
-  if (logoImg) { logoEl.src = logoImg.src; const logoScan = document.getElementById('facialLogoScan'); if(logoScan) logoScan.src = logoImg.src; }
+  if (logoImg) { logoEl.src = logoImg.src; const ls = document.getElementById('facialLogoScan'); if(ls) ls.src = logoImg.src; }
   // Start clock
   updateFacialClock();
   setInterval(updateFacialClock, 1000);
@@ -2813,20 +2802,14 @@ function showFacialConfirmation(name, time, type, message) {
   const bgColor = type === null ? 'rgba(232,160,32,0.15)' : isEntry ? 'rgba(34,197,94,0.12)' : 'rgba(196,18,48,0.12)';
   const icon = type === null ? '⚠️' : isEntry ? '✅' : '🔴';
   const label = type === null ? message : isEntry ? 'ENTRADA' : 'SALIDA';
-  const labelBg = type === null ? '#e8a020' : isEntry ? '#22c55e' : '#C41230';
-
   resultEl.innerHTML = `
     <div style="width:110px;height:110px;border-radius:50%;background:${bgColor};border:3px solid ${color};display:flex;align-items:center;justify-content:center;font-size:48px;margin-bottom:20px;box-shadow:0 0 40px ${color}55">${icon}</div>
     <div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:#fff;text-align:center;margin-bottom:6px;line-height:1.1">${name}</div>
     <div style="font-size:22px;color:rgba(255,255,255,0.6);margin-bottom:16px;font-weight:300">${time}</div>
-    <div style="background:${labelBg};color:#fff;font-family:'Syne',sans-serif;font-weight:800;font-size:18px;letter-spacing:2px;padding:10px 32px;border-radius:999px;box-shadow:0 4px 20px ${labelBg}66">${label}</div>
+    <div style="background:${color};color:#fff;font-family:'Syne',sans-serif;font-weight:800;font-size:18px;letter-spacing:2px;padding:10px 32px;border-radius:999px;box-shadow:0 4px 20px ${color}66">${label}</div>
   `;
   document.getElementById('facialScanStatus').textContent = '✅ Registrado';
-
-  // Return to idle after 4 seconds
-  setTimeout(() => {
-    cancelFacialScan();
-  }, 4000);
+  setTimeout(() => { cancelFacialScan(); }, 4000);
 }
 
 function stopFacialCamera() {
