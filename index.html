@@ -379,14 +379,14 @@
   /* ── Tablet portrait fallback ── */
   @media (orientation: portrait) {
     #facialIdle { flex-direction: column !important; }
-    #facialIdle > div:first-child { border-right: none !important; border-bottom: 1px solid rgba(255,255,255,0.07); flex: none; height: 55vh; padding: 24px; }
-    #facialIdle > div:last-child { flex: none; height: 45vh; padding: 24px; }
-    #facialClock { font-size: 52px !important; }
+    #facialIdle > div:first-child { border-right: none !important; border-bottom: 1px solid rgba(255,255,255,0.07); flex: none; height: 52vh; padding: 20px; }
+    #facialIdle > div:last-child { flex: none; height: 48vh; padding: 20px; }
+    #facialClock { font-size: 48px !important; }
     #facialScanning > div { flex-direction: column !important; }
     #facialScanning > div > div:first-child { flex: none !important; height: 55vh; }
-    #facialScanning > div > div:last-child { width: 100% !important; min-width: unset !important; height: 45vh; padding: 16px 24px; flex-direction: row; justify-content: space-around; flex-wrap: wrap; }
+    #facialScanning > div > div:last-child { width: 100% !important; min-width: unset !important; height: 45vh; padding: 12px 20px; flex-direction: row; justify-content: space-around; flex-wrap: wrap; align-items: center; }
     #facialClockScan { font-size: 28px !important; margin-bottom: 2px !important; }
-    #facialDateScan { font-size: 11px !important; margin-bottom: 12px !important; }
+    #facialDateScan { font-size: 11px !important; margin-bottom: 8px !important; }
     #facialLogoScan { width: 80px !important; margin-bottom: 8px !important; }
   }
 </style>
@@ -1180,6 +1180,7 @@ async function doLogin() {
         return;
       }
       currentUser = { ...data };
+      localStorage.setItem('viorSession', JSON.stringify(currentUser));
       await loadConfigFromDB();
       await loadRecordsFromDB();
       startRealtimeListener();
@@ -1202,6 +1203,7 @@ function logout() {
   stopFacialCamera();
   localStorage.removeItem('tabletSession');
   currentUser = null; userGeo = null; geoOk = false;
+  localStorage.removeItem('viorSession');
   RECORDS = [];
   show('loginScreen');
   document.getElementById('loginPin').value = '';
@@ -2809,7 +2811,11 @@ function showFacialConfirmation(name, time, type, message) {
     <div style="background:${color};color:#fff;font-family:'Syne',sans-serif;font-weight:800;font-size:18px;letter-spacing:2px;padding:10px 32px;border-radius:999px;box-shadow:0 4px 20px ${color}66">${label}</div>
   `;
   document.getElementById('facialScanStatus').textContent = '✅ Registrado';
-  setTimeout(() => { cancelFacialScan(); }, 4000);
+
+  // Return to idle after 4 seconds
+  setTimeout(() => {
+    cancelFacialScan();
+  }, 4000);
 }
 
 function stopFacialCamera() {
@@ -3805,6 +3811,44 @@ function generatePDFIndividual() {
   document.getElementById('pdfEmpSelector').style.display = 'none';
   showToast(`📄 PDF de ${emp.name} descargado`, 'success');
 }
+
+// ════════════════════════════════
+//  SESSION RESTORE ON RELOAD
+// ════════════════════════════════
+async function tryRestoreSession() {
+  // Tablet session restores directly
+  if (localStorage.getItem('tabletSession') === '1') {
+    currentUser = DEMO_USERS.find(x => x.role === 'tablet');
+    await loadConfigFromDB();
+    showFacialScreen();
+    return;
+  }
+  // Regular user session
+  const saved = localStorage.getItem('viorSession');
+  if (!saved) return;
+  try {
+    const parsed = JSON.parse(saved);
+    if (!parsed?.user) return;
+    // Re-verify user is still active in Firebase
+    const snap = await getDocs(query(collection(db, 'users'), where('user', '==', parsed.user)));
+    if (snap.empty) { localStorage.removeItem('viorSession'); return; }
+    const data = snap.docs[0].data();
+    if (data.active === false) { localStorage.removeItem('viorSession'); return; }
+    currentUser = { ...data };
+    await loadConfigFromDB();
+    await loadRecordsFromDB();
+    startRealtimeListener();
+    if (data.role === 'admin') showAdmin();
+    else if (data.role === 'consultor') showConsultor();
+    else if (data.role === 'enroller') showEnroller();
+    else showEmployee();
+  } catch(e) {
+    localStorage.removeItem('viorSession');
+  }
+}
+
+// Run session restore when page loads
+tryRestoreSession();
 
 window.doLogin = doLogin;
 window.showConsultor = showConsultor;
