@@ -1858,7 +1858,7 @@ async function renderCollabList() {
   if (!container) return;
   
   const activeCollabs = COLLABS.filter(c => c.active !== false);
-  
+
   if (!activeCollabs.length) {
     container.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div>Sin colaboradores activos. Agrega el primero.</div>';
     return;
@@ -1870,20 +1870,39 @@ async function renderCollabList() {
     faceIds = faceSnap.docs.map(d => d.id);
   } catch(e) {}
 
-  container.innerHTML = activeCollabs.map(c => {
+  const systemRoles = ['admin', 'enroller', 'consultor', 'tablet'];
+  const systemUsers = activeCollabs.filter(c => systemRoles.includes(c.role));
+  const collabUsers = activeCollabs.filter(c => !systemRoles.includes(c.role));
+
+  const renderRow = (c, isSystem) => {
     const hasFace = faceIds.includes(c.user);
+    const avatarBg = isSystem ? 'linear-gradient(135deg,#2B4EAE,#1a3a8a)' : 'linear-gradient(135deg,#C41230,#a00e25)';
+    const roleColor = c.role==='admin'?'#2B4EAE':c.role==='consultor'?'#6366f1':c.role==='tablet'?'#0891b2':'#C41230';
+    const roleLabel = c.role==='admin'?'Admin':c.role==='enroller'?'Enrolador':c.role==='consultor'?'Consultor':c.role==='tablet'?'Tableta':'Empleado';
     return `<div class="emp-row">
-      <div class="emp-avatar" style="background:${c.role==='admin'?'linear-gradient(135deg,#2B4EAE,#1a3a8a)':'linear-gradient(135deg,#C41230,#a00e25)'}">${c.name ? c.name[0].toUpperCase() : '?'}</div>
+      <div class="emp-avatar" style="background:${avatarBg}">${c.name ? c.name[0].toUpperCase() : '?'}</div>
       <div class="emp-info">
         <div class="emp-name">${c.name}</div>
-        <div class="emp-detail">@${c.user} · <span style="color:${c.role==='admin'?'#2B4EAE':c.role==='consultor'?'#6366f1':'#C41230'};font-weight:600">${c.role==='admin'?'Admin':c.role==='enroller'?'Enrolador':c.role==='consultor'?'Consultor':'Empleado'}</span>${c.office?' · <span style="color:#6366f1">🏢 Oficina</span>':''}${c.saitNum?' · SAIT #'+c.saitNum:''}${c.hireDate?' · Ingreso: '+c.hireDate:''} · ${hasFace?'<span style="color:#2B4EAE">🤳 Rostro registrado</span>':'<span style="color:#e8a020">⚠️ Sin rostro</span>'}</div>
+        <div class="emp-detail">@${c.user} · <span style="color:${roleColor};font-weight:600">${roleLabel}</span>${!isSystem && c.office?' · <span style="color:#6366f1">🏢 Oficina</span>':''}${!isSystem && c.saitNum?' · SAIT #'+c.saitNum:''}${!isSystem && c.hireDate?' · Ingreso: '+c.hireDate:''} · ${hasFace?'<span style="color:#2B4EAE">🤳 Rostro registrado</span>':'<span style="color:#e8a020">⚠️ Sin rostro</span>'}</div>
       </div>
       <div style="display:flex;gap:8px">
         <button onclick="window.editCollab('${c.id}')" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-size:12px;cursor:pointer">Editar</button>
         <button onclick="window.deleteCollab('${c.id}','${c.name}')" style="background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.2);border-radius:8px;padding:6px 12px;color:#C41230;font-size:12px;cursor:pointer">Eliminar</button>
       </div>
     </div>`;
-  }).join('');
+  };
+
+  let html = '';
+  if (systemUsers.length) {
+    html += `<div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:#2B4EAE;text-transform:uppercase;letter-spacing:2px;padding:12px 4px 8px;border-bottom:1px solid rgba(43,78,174,0.15);margin-bottom:4px">🔧 Usuarios del sistema</div>`;
+    html += systemUsers.map(c => renderRow(c, true)).join('');
+    html += `<div style="height:16px"></div>`;
+  }
+  if (collabUsers.length) {
+    html += `<div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:2px;padding:12px 4px 8px;border-bottom:1px solid var(--border);margin-bottom:4px">👥 Colaboradores</div>`;
+    html += collabUsers.map(c => renderRow(c, false)).join('');
+  }
+  container.innerHTML = html;
 }
 
 function showAddCollab() {
