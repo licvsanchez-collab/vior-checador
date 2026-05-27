@@ -2558,34 +2558,26 @@ function facialLogoTap() {
 async function confirmFacialExit() {
   const pin = document.getElementById('facialExitPin').value.trim();
   try {
-      const hashedPin = await hashPin(pin);
-      const q = query(collection(db, 'users'), where('pin', '==', hashedPin), where('role', '==', 'admin'));
-      const snap = await getDocs(q);
-      if (snap.empty) {
-        document.getElementById('facialExitPin').style.border = '1px solid #C41230';
-        setTimeout(() => document.getElementById('facialExitPin').style.border = '1px solid rgba(255,255,255,0.2)', 1000);
-        return;
-      }
-      const data = snap.docs[0].data();
-      document.getElementById('facialExitModal').style.display = 'none';
-      document.getElementById('facialExitPin').value = '';
-      localStorage.removeItem('tabletSession');
-      currentUser = { ...data };
-      await loadConfigFromDB();
-      await loadRecordsFromDB();
-      startRealtimeListener();
-      showAdmin();
+    const hashedPin = await hashPin(pin);
+    const q = query(collection(db, 'users'), where('pin', '==', hashedPin), where('role', '==', 'admin'));
+    const snap = await getDocs(q);
+    if (snap.empty) {
+      document.getElementById('facialExitPin').style.border = '1px solid #C41230';
+      setTimeout(() => document.getElementById('facialExitPin').style.border = '1px solid rgba(255,255,255,0.2)', 1000);
       return;
-    } catch(e) { return; }
+    }
+    const data = snap.docs[0].data();
+    document.getElementById('facialExitModal').style.display = 'none';
+    document.getElementById('facialExitPin').value = '';
+    localStorage.removeItem('tabletSession');
+    currentUser = { ...data };
+    await loadConfigFromDB();
+    await loadRecordsFromDB();
+    startRealtimeListener();
+    showAdmin();
+  } catch(e) {
+    showToast('⚠️ Error al verificar PIN', 'error');
   }
-  document.getElementById('facialExitModal').style.display = 'none';
-  document.getElementById('facialExitPin').value = '';
-  localStorage.removeItem('tabletSession');
-  currentUser = match;
-  await loadConfigFromDB();
-  await loadRecordsFromDB();
-  startRealtimeListener();
-  showAdmin();
 }
 
 async function showFacialScreen() {
