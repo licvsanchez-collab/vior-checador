@@ -1152,6 +1152,7 @@ async function doLogin() {
       if (data.role === 'admin') showAdmin();
       else if (data.role === 'consultor') showConsultor();
       else if (data.role === 'enroller') showEnroller();
+      else if (data.role === 'tablet') { localStorage.setItem('tabletSession', '1'); showFacialScreen(); }
       else showEmployee();
       return;
     }
@@ -1465,7 +1466,7 @@ async function loadEmpPhotos() {
 function renderAdmin() {
   const today = getAllRecordsToday();
   const allEmps = COLLABS.length > 0 
-    ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.active !== false) 
+    ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.role !== 'tablet' && c.active !== false) 
     : [];
 
   let present=0, absent=0, late=0, extraMin=0;
@@ -1947,10 +1948,16 @@ async function saveCollab() {
     const bonoPuntualidad = document.getElementById('collabBonoPuntualidad')?.checked || false;
     const active = document.getElementById('collabActive')?.checked !== false;
     const hireDate = document.getElementById('collabHireDate')?.value || '';
-    const hashedPinSave = await hashPin(pin);
-    const data = { name, user, pin: hashedPinSave, role, saitNum, office, bonoAsistencia, bonoPuntualidad, active, hireDate, createdAt: new Date().toISOString() };
+    let pinData = {};
+    if (pin) {
+      pinData = { pin: await hashPin(pin) };
+    } else if (!editId) {
+      showToast('El PIN es obligatorio para nuevos colaboradores', 'error');
+      btn.textContent = 'Guardar'; btn.disabled = false; return;
+    }
+    const data = { name, user, ...pinData, role, saitNum, office, bonoAsistencia, bonoPuntualidad, active, hireDate, createdAt: new Date().toISOString() };
     const docId = editId || user;
-    await setDoc(doc(db, 'users', docId), data);
+    await setDoc(doc(db, 'users', docId), data, { merge: true });
     document.getElementById('collabModal').classList.remove('open');
     await loadCollabs();
     showToast(editId ? '✅ Colaborador actualizado' : '✅ Colaborador agregado', 'success');
@@ -2224,7 +2231,7 @@ async function loadNomina() {
     const q = query(collection(db, 'records'), where('date', '>=', from), where('date', '<=', to));
     const snap = await getDocs(q);
     NOMINA_RECORDS = snap.docs.map(d => d.data());
-    NOMINA_EMPS = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.active !== false);
+    NOMINA_EMPS = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.role !== 'tablet' && c.active !== false);
     // Load vacations so they count as worked days
     const vacSnap2 = await getDocs(collection(db, 'vacations'));
     window.NOMINA_VACATIONS = vacSnap2.docs.map(d => d.data()).filter(v => v.from <= to && v.to >= from);
@@ -2413,7 +2420,7 @@ async function showEnroller() {
   // Populate dropdown
   const sel = document.getElementById('enrollEmp');
   sel.innerHTML = '<option value="">Selecciona...</option>';
-  COLLABS.filter(c => c.role !== 'admin').forEach(emp => {
+  COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.role !== 'tablet').forEach(emp => {
     const opt = document.createElement('option');
     opt.value = emp.user; opt.textContent = emp.name;
     sel.appendChild(opt);
@@ -3257,7 +3264,7 @@ async function generateReport() {
 }
 
 function renderReportDashboard(from, to) {
-  const emps = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.active !== false) : [];
+  const emps = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.role !== 'tablet' && c.active !== false) : [];
   const workDays = CONFIG.workDays || [1,2,3,4,5];
   const dates = [];
   let cur = new Date(from + 'T12:00:00');
@@ -3395,7 +3402,7 @@ function exportRangeCSV() { exportIncidencesCSV(); }
 
 function exportIncidencesCSV() {
   if (!REPORT_RECORDS.length) { showToast('Genera un reporte primero', 'warn'); return; }
-  const emps = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.active !== false) : [];
+  const emps = COLLABS.length > 0 ? COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.role !== 'tablet' && c.active !== false) : [];
   const from = document.getElementById('rptFrom').value;
   const to   = document.getElementById('rptTo').value;
 
@@ -3713,7 +3720,7 @@ function exportPDFGrupal() {
     if (workDays.includes(cur.getDay()) && !isHoliday(d)) dates.push(d);
     cur.setDate(cur.getDate() + 1);
   }
-  const emps = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.active !== false);
+  const emps = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.role !== 'tablet' && c.active !== false);
   const { doc, margin, W } = buildPDFBase(from, to, 'Reporte Grupal de Asistencia');
   let y = 38;
   emps.forEach(emp => {
@@ -3735,7 +3742,7 @@ function exportPDFIndividual() {
   if (!REPORT_RECORDS) { showToast('Genera el reporte primero', 'warn'); return; }
   const selector = document.getElementById('pdfEmpSelector');
   const select = document.getElementById('pdfEmpSelect');
-  const emps = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.active !== false);
+  const emps = COLLABS.filter(c => c.role !== 'admin' && c.role !== 'enroller' && c.role !== 'consultor' && c.role !== 'tablet' && c.active !== false);
   select.innerHTML = '<option value="">— Selecciona colaborador —</option>' +
     emps.map(e => `<option value="${e.user}">${e.name}</option>`).join('');
   selector.style.display = selector.style.display === 'none' ? 'block' : 'none';
