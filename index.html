@@ -1362,6 +1362,8 @@ async function registerCheck(type) {
   const btn = document.getElementById(type==='entry'?'btnEntry':'btnExit');
   if (btn.classList.contains('disabled')) return;
   if (!geoOk) { showToast('No estás en la zona permitida', 'error'); return; }
+  // Block inactive collaborators
+  if (currentUser?.active === false) { showToast('⛔ Usuario inactivo', 'error'); return; }
 
   const now = new Date();
   // Store in 24h for calculations, display in 12h for UI
@@ -2718,6 +2720,15 @@ async function scanForFace() {
     if (!bestMatch) {
       document.getElementById('facialScanStatus').textContent = '❌ Rostro no reconocido';
       facialProcessing = false;
+      return;
+    }
+
+    // Block inactive collaborators
+    const facialCollabData = COLLABS.find(c => c.user === bestMatch.userId);
+    if (facialCollabData && facialCollabData.active === false) {
+      document.getElementById('facialScanStatus').textContent = '⛔ Colaborador inactivo';
+      showFacialConfirmation(bestMatch.name, '', null, '⛔ Colaborador inactivo');
+      clearInterval(facialScanInterval);
       return;
     }
 
