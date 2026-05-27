@@ -2723,9 +2723,19 @@ async function scanForFace() {
       return;
     }
 
-    // Block inactive collaborators
+    // Block inactive collaborators — check COLLABS first, then Firebase as fallback
+    let isInactive = false;
     const facialCollabData = COLLABS.find(c => c.user === bestMatch.userId);
-    if (facialCollabData && facialCollabData.active === false) {
+    if (facialCollabData) {
+      isInactive = facialCollabData.active === false;
+    } else {
+      // COLLABS may be empty (tablet mode) — verify directly in Firebase
+      try {
+        const userSnap = await getDocs(query(collection(db, 'users'), where('user', '==', bestMatch.userId)));
+        if (!userSnap.empty && userSnap.docs[0].data().active === false) isInactive = true;
+      } catch(e) { /* if offline, allow through */ }
+    }
+    if (isInactive) {
       document.getElementById('facialScanStatus').textContent = '⛔ Colaborador inactivo';
       showFacialConfirmation(bestMatch.name, '', null, '⛔ Colaborador inactivo');
       clearInterval(facialScanInterval);
