@@ -248,7 +248,7 @@
   }
   .stat-val { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .stat-val.green { color: #1a1f2e; }
-  .stat-val.red { color: var(--accent2); }
+  .stat-val.red { color: #C41230; }
   .stat-val.yellow { color: var(--accent3); }
   .stat-lbl { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
@@ -273,7 +273,7 @@
   .badge-in { background: rgba(26,31,46,0.08); color: #1a1f2e; border: 1px solid rgba(26,31,46,0.15); }
   .badge-out { background: rgba(107,122,153,0.12); color: var(--muted); }
   .badge-late { background: rgba(255,209,102,0.12); color: var(--accent3); }
-  .badge-absent { background: rgba(255,107,107,0.12); color: var(--accent2); }
+  .badge-absent { background: rgba(196,18,48,0.12); color: #C41230; }
 
   .export-btn {
     width: 100%; background: var(--surface2);
@@ -938,8 +938,6 @@
       👤 Registrar asistencia
     </button>
     <div style="margin-top:18px;font-size:12px;color:rgba(255,255,255,0.18)">Toca para iniciar</div>
-    <!-- Offline indicator -->
-    <div id="offlineDot" style="display:none;position:fixed;top:16px;right:16px;width:12px;height:12px;border-radius:50%;background:#C41230;box-shadow:0 0 8px currentColor;cursor:default;transition:background 0.3s" title="Sin internet"></div>
   </div>
 
   <!-- SCANNING STATE -->
@@ -2619,8 +2617,6 @@ async function confirmFacialExit() {
 
 async function showFacialScreen() {
   show('facialScreen');
-  updateOfflineIndicator();
-  syncPendingRecords();
   // Set logo
   const logoEl = document.getElementById('facialLogo');
   const logoImg = document.querySelector('.logo-wrap img');
@@ -2646,34 +2642,21 @@ async function startFacialScan() {
   // Load models if needed
   if (!faceModelsLoaded) await loadFaceModels();
 
-  // Load face descriptors — Firebase if online, IndexedDB if offline
+  // Load face descriptors from Firebase
   try {
-    if (navigator.onLine) {
-      const snap = await getDocs(collection(db, 'faces'));
-      facialDescriptors = snap.docs.map(d => ({
-        userId: d.id,
-        name: d.data().name,
-        descriptor: new Float32Array(d.data().descriptor)
-      }));
-      // Cache locally for offline use
-      if (facialDescriptors.length) await saveFaceDescriptorsLocally(facialDescriptors);
-    } else {
-      // Offline — use cached descriptors
-      facialDescriptors = await getLocalFaceDescriptors();
-    }
+    const snap = await getDocs(collection(db, 'faces'));
+    facialDescriptors = snap.docs.map(d => ({
+      userId: d.id,
+      name: d.data().name,
+      descriptor: new Float32Array(d.data().descriptor)
+    }));
     if (!facialDescriptors.length) {
       showToast('⚠️ No hay rostros registrados', 'error');
       return;
     }
   } catch(e) {
-    // Last resort — try local cache
-    try {
-      facialDescriptors = await getLocalFaceDescriptors();
-      if (!facialDescriptors.length) throw new Error('Sin rostros');
-    } catch {
-      showToast('⚠️ Error cargando rostros', 'error');
-      return;
-    }
+    showToast('⚠️ Error cargando rostros', 'error');
+    return;
   }
 
   // Show scanning UI
@@ -2794,22 +2777,13 @@ async function registerFacialCheck(match) {
       const facialLunch = isFacialWorkday ? (CONFIG.lunchMin || 60) : 0;
       rec.workedMin = Math.max(0, exitMins - effectiveEntry - facialLunch);
       const overMin = exitMins - timeToMinutes(CONFIG.endTime);
-      rec.extraMin = isFacialWorkday ? (overMin >= 30 ? overMin : 0) : rec.workedMin;
+      const facialEmpData = COLLABS.find(c => c.user === match.userId);
+      const isFacialOffice = facialEmpData?.office || false;
+      rec.extraMin = isFacialOffice ? 0 : isFacialWorkday ? (overMin >= 30 ? overMin : 0) : rec.workedMin;
     }
   }
 
-  // Save to Firebase or queue offline
-  if (navigator.onLine) {
-    try {
-      await setDoc(doc(db, 'records', String(rec.id)), rec);
-    } catch(e) {
-      await savePendingRecord(rec);
-      updateOfflineIndicator();
-    }
-  } else {
-    await savePendingRecord(rec);
-    updateOfflineIndicator();
-  }
+  await setDoc(doc(db, 'records', String(rec.id)), rec);
   showFacialConfirmation(match.name, timeDisplay, type, null);
 }
 
@@ -3856,123 +3830,6 @@ async function tryRestoreSession() {
   } catch(e) { localStorage.removeItem('viorSession'); }
 }
 tryRestoreSession();
-// ════════════════════════════════
-//  OFFLINE SUPPORT
-// ════════════════════════════════
-
-// Register service worker
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW:', e));
-}
-
-// IndexedDB helpers
-function openOfflineDB() {
-  return new Promise((res, rej) => {
-    const req = indexedDB.open('viorOffline', 2);
-    req.onupgradeneeded = e => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains('pendingRecords'))
-        db.createObjectStore('pendingRecords', { keyPath: 'id' });
-      if (!db.objectStoreNames.contains('faceDescriptors'))
-        db.createObjectStore('faceDescriptors', { keyPath: 'userId' });
-    };
-    req.onsuccess = e => res(e.target.result);
-    req.onerror = e => rej(e);
-  });
-}
-
-async function savePendingRecord(rec) {
-  const db = await openOfflineDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction('pendingRecords', 'readwrite');
-    tx.objectStore('pendingRecords').put(rec);
-    tx.oncomplete = res; tx.onerror = rej;
-  });
-}
-
-async function getPendingRecords() {
-  const db = await openOfflineDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction('pendingRecords', 'readonly');
-    const req = tx.objectStore('pendingRecords').getAll();
-    req.onsuccess = e => res(e.target.result);
-    req.onerror = rej;
-  });
-}
-
-async function deletePendingRecord(id) {
-  const db = await openOfflineDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction('pendingRecords', 'readwrite');
-    tx.objectStore('pendingRecords').delete(id);
-    tx.oncomplete = res; tx.onerror = rej;
-  });
-}
-
-async function saveFaceDescriptorsLocally(descriptors) {
-  const db = await openOfflineDB();
-  const tx = db.transaction('faceDescriptors', 'readwrite');
-  const store = tx.objectStore('faceDescriptors');
-  store.clear();
-  descriptors.forEach(d => store.put({ userId: d.userId, name: d.name, descriptor: Array.from(d.descriptor) }));
-  return new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
-}
-
-async function getLocalFaceDescriptors() {
-  const db = await openOfflineDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction('faceDescriptors', 'readonly');
-    const req = tx.objectStore('faceDescriptors').getAll();
-    req.onsuccess = e => res(e.target.result.map(d => ({
-      userId: d.userId, name: d.name,
-      descriptor: new Float32Array(d.descriptor)
-    })));
-    req.onerror = rej;
-  });
-}
-
-// Sync pending records to Firebase
-async function syncPendingRecords() {
-  if (!navigator.onLine) return;
-  const pending = await getPendingRecords();
-  if (!pending.length) return;
-  let synced = 0;
-  for (const rec of pending) {
-    try {
-      await setDoc(doc(db, 'records', String(rec.id)), rec);
-      await deletePendingRecord(rec.id);
-      synced++;
-    } catch(e) { console.warn('Sync error:', e); }
-  }
-  if (synced > 0) {
-    showToast(`✅ ${synced} registro${synced>1?'s':''} sincronizado${synced>1?'s':''}`, 'success');
-    updateOfflineIndicator();
-  }
-}
-
-// Offline indicator
-function updateOfflineIndicator() {
-  let dot = document.getElementById('offlineDot');
-  if (!dot) return;
-  getPendingRecords().then(pending => {
-    if (!navigator.onLine) {
-      dot.style.background = pending.length ? '#e8a020' : '#C41230';
-      dot.title = pending.length ? `Sin internet — ${pending.length} pendiente(s)` : 'Sin internet';
-      dot.style.display = 'block';
-    } else if (pending.length) {
-      dot.style.background = '#e8a020';
-      dot.title = `Sincronizando ${pending.length} registro(s)...`;
-      dot.style.display = 'block';
-    } else {
-      dot.style.display = 'none';
-    }
-  });
-}
-
-// Listen for online/offline events
-window.addEventListener('online', () => { updateOfflineIndicator(); syncPendingRecords(); });
-window.addEventListener('offline', () => { updateOfflineIndicator(); });
-
 window.doLogin = doLogin;
 window.showConsultor = showConsultor;
 window.logout = logout;
