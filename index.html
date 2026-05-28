@@ -2707,7 +2707,7 @@ async function scanForFace() {
     // Compare with registered faces
     const queryDescriptor = detection.descriptor;
     let bestMatch = null;
-    let bestDistance = 0.6; // threshold
+    let bestDistance = 0.50; // threshold
 
     facialDescriptors.forEach(fd => {
       const distance = faceapi.euclideanDistance(queryDescriptor, fd.descriptor);
@@ -2941,7 +2941,7 @@ async function startMobileFacialScan() {
       document.getElementById('mobileScanStatus').textContent = '🔍 Reconociendo…';
 
       let bestMatch = null;
-      let bestDistance = 0.6;
+      let bestDistance = 0.50;
       descriptors.forEach(fd => {
         const dist = faceapi.euclideanDistance(detection.descriptor, fd.descriptor);
         if (dist < bestDistance) { bestDistance = dist; bestMatch = fd; }
@@ -3839,35 +3839,47 @@ function generatePDFIndividual() {
 }
 
 async function tryRestoreSession() {
-  if (localStorage.getItem('tabletSession') === '1') {
-    try {
-      const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'tablet')));
-      currentUser = snap.empty ? { user: 'tableta', name: 'Tableta', role: 'tablet' } : snap.docs[0].data();
-    } catch(e) {
-      currentUser = { user: 'tableta', name: 'Tableta', role: 'tablet' };
-    }
-    await loadConfigFromDB();
-    showFacialScreen();
-    return;
-  }
-  const saved = localStorage.getItem('viorSession');
-  if (!saved) return;
+  // Timeout fallback — if restore takes too long, show login
+  const restoreTimeout = setTimeout(() => {
+    if (document.querySelector('.screen.active')) return; // already showing something
+    show('loginScreen');
+  }, 5000);
+
   try {
+    if (localStorage.getItem('tabletSession') === '1') {
+      try {
+        const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'tablet')));
+        currentUser = snap.empty ? { user: 'tableta', name: 'Tableta', role: 'tablet' } : snap.docs[0].data();
+      } catch(e) {
+        currentUser = { user: 'tableta', name: 'Tableta', role: 'tablet' };
+      }
+      await loadConfigFromDB();
+      clearTimeout(restoreTimeout);
+      showFacialScreen();
+      return;
+    }
+    const saved = localStorage.getItem('viorSession');
+    if (!saved) { clearTimeout(restoreTimeout); return; }
     const parsed = JSON.parse(saved);
-    if (!parsed?.user) return;
+    if (!parsed?.user) { clearTimeout(restoreTimeout); return; }
     const snap = await getDocs(query(collection(db, 'users'), where('user', '==', parsed.user)));
-    if (snap.empty) { localStorage.removeItem('viorSession'); return; }
+    if (snap.empty) { localStorage.removeItem('viorSession'); clearTimeout(restoreTimeout); return; }
     const data = snap.docs[0].data();
-    if (data.active === false) { localStorage.removeItem('viorSession'); return; }
+    if (data.active === false) { localStorage.removeItem('viorSession'); clearTimeout(restoreTimeout); return; }
     currentUser = { ...data };
     await loadConfigFromDB();
     await loadRecordsFromDB();
     startRealtimeListener();
+    clearTimeout(restoreTimeout);
     if (data.role === 'admin') showAdmin();
     else if (data.role === 'consultor') showConsultor();
     else if (data.role === 'enroller') showEnroller();
     else showEmployee();
-  } catch(e) { localStorage.removeItem('viorSession'); }
+  } catch(e) {
+    localStorage.removeItem('viorSession');
+    clearTimeout(restoreTimeout);
+    show('loginScreen');
+  }
 }
 tryRestoreSession();
 // ════════════════════════════════
