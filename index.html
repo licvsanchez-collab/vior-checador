@@ -997,11 +997,13 @@ const firebaseConfig = {
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
 
-// Initialize App Check with reCAPTCHA v3
-const appCheck = initializeAppCheck(fbApp, {
-  provider: new ReCaptchaV3Provider('6LdU6-YsAAAAAPLzcx1u47WL_jc4ss4hY2QEzSSQ'),
-  isTokenAutoRefreshEnabled: true
-});
+// Initialize App Check with reCAPTCHA v3 — non-blocking
+try {
+  initializeAppCheck(fbApp, {
+    provider: new ReCaptchaV3Provider('6LdU6-YsAAAAAPLzcx1u47WL_jc4ss4hY2QEzSSQ'),
+    isTokenAutoRefreshEnabled: true
+  });
+} catch(e) { console.warn('AppCheck init:', e); }
 
 // ════════════════════════════════
 //  DATA LAYER
@@ -3850,7 +3852,7 @@ async function tryRestoreSession() {
   const restoreTimeout = setTimeout(() => {
     if (document.querySelector('.screen.active')) return; // already showing something
     show('loginScreen');
-  }, 5000);
+  }, 3000);
 
   try {
     if (localStorage.getItem('tabletSession') === '1') {
@@ -3875,13 +3877,14 @@ async function tryRestoreSession() {
     if (data.active === false) { localStorage.removeItem('viorSession'); clearTimeout(restoreTimeout); return; }
     currentUser = { ...data };
     await loadConfigFromDB();
-    await loadRecordsFromDB();
-    startRealtimeListener();
     clearTimeout(restoreTimeout);
+    // Show screen first, load records in background via listener
     if (data.role === 'admin') showAdmin();
     else if (data.role === 'consultor') showConsultor();
     else if (data.role === 'enroller') showEnroller();
     else showEmployee();
+    // Start listener after screen is showing
+    startRealtimeListener();
   } catch(e) {
     localStorage.removeItem('viorSession');
     clearTimeout(restoreTimeout);
@@ -3999,6 +4002,16 @@ function updateOfflineIndicator() {
 }
 
 window.addEventListener('online', () => { updateOfflineIndicator(); syncPendingRecords(); });
+
+// Recover from background — restart listener if needed
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && currentUser) {
+    if (!unsubscribe) startRealtimeListener();
+    if (currentUser.role === 'emp') { updateButtons(); renderTodayLog(); }
+    updateOfflineIndicator();
+    syncPendingRecords();
+  }
+});
 window.addEventListener('offline', () => { updateOfflineIndicator(); });
 
 window.doLogin = doLogin;
