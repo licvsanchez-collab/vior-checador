@@ -802,6 +802,9 @@
     <div class="field-label">Número de trabajador SAIT</div>
     <input class="field-input" id="collabSaitNum" type="number" placeholder="Ej: 24" min="1">
 
+    <div class="field-label">Salario diario base</div>
+    <input class="field-input" id="collabSalario" type="number" placeholder="Ej: 350.00" min="0" step="0.01">
+
     <div class="field-label">Fecha de ingreso</div>
     <input class="field-input" id="collabHireDate" type="date">
 
@@ -1924,6 +1927,7 @@ function showAddCollab() {
   document.getElementById('collabUser').value = '';
   document.getElementById('collabPin').value = '';
   document.getElementById('collabSaitNum').value = '';
+  document.getElementById('collabSalario').value = '';
   document.getElementById('collabHireDate').value = '';
   document.getElementById('collabUser').disabled = false;
   const officeEl = document.getElementById('collabOffice');
@@ -1947,6 +1951,7 @@ function editCollab(id) {
   document.getElementById('collabUser').value = c.user || '';
   document.getElementById('collabPin').value = '';
   document.getElementById('collabSaitNum').value = c.saitNum || '';
+  document.getElementById('collabSalario').value = c.salarioDiario || '';
   document.getElementById('collabHireDate').value = c.hireDate || '';
   document.getElementById('collabUser').disabled = true;
   const officeEl2 = document.getElementById('collabOffice');
@@ -1974,6 +1979,7 @@ async function saveCollab() {
   try {
     const role = document.getElementById('collabRole').value || 'emp';
     const saitNum = parseInt(document.getElementById('collabSaitNum').value) || null;
+    const salarioDiario = parseFloat(document.getElementById('collabSalario').value) || null;
     const office = document.getElementById('collabOffice')?.checked || false;
     const bonoAsistencia = document.getElementById('collabBonoAsistencia')?.checked || false;
     const bonoPuntualidad = document.getElementById('collabBonoPuntualidad')?.checked || false;
@@ -1986,7 +1992,7 @@ async function saveCollab() {
       showToast('El PIN es obligatorio para nuevos colaboradores', 'error');
       btn.textContent = 'Guardar'; btn.disabled = false; return;
     }
-    const data = { name, user, ...pinData, role, saitNum, office, bonoAsistencia, bonoPuntualidad, active, hireDate, createdAt: new Date().toISOString() };
+    const data = { name, user, ...pinData, role, saitNum, salarioDiario, office, bonoAsistencia, bonoPuntualidad, active, hireDate, createdAt: new Date().toISOString() };
     const docId = editId || user;
     await setDoc(doc(db, 'users', docId), data, { merge: true });
     document.getElementById('collabModal').classList.remove('open');
@@ -2404,6 +2410,16 @@ async function exportSAIT() {
     if (totalExtraHrs > 9) {
       const triples = totalExtraHrs - 9;
       rows.push([numTrab, 613, parseFloat(triples.toFixed(2)), 'S']);
+    }
+    // Prima vacacional (concepto 10) — salario diario × 0.25 × días de vacaciones en el período
+    if (emp.salarioDiario) {
+      const vacDays = empDates.filter(date =>
+        window.NOMINA_VACATIONS?.some(v => v.userId === emp.user && date >= v.from && date <= v.to)
+      ).length;
+      if (vacDays > 0) {
+        const primaVac = parseFloat((emp.salarioDiario * 0.25 * vacDays).toFixed(2));
+        rows.push([numTrab, 10, primaVac, 'S']);
+      }
     }
   });
 
