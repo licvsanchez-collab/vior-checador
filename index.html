@@ -1455,6 +1455,11 @@ async function loadTodayVacations() {
       .filter(v => today >= v.from && today <= v.to)
       .map(v => v.userId);
   } catch(e) { VACATION_DAYS_TODAY = []; }
+  // Also load today's justificantes for dashboard
+  try {
+    const jSnap = await getDocs(query(collection(db, 'justificantes'), where('date', '==', todayStr())));
+    window.TODAY_JUSTIFICANTES = jSnap.docs.map(d => d.data().userId);
+  } catch(e) { window.TODAY_JUSTIFICANTES = []; }
 }
 
 let EMP_PHOTOS = {}; // Cache of employee photos
@@ -1491,6 +1496,8 @@ function renderAdmin() {
       badgeClass='badge-out';
     } else if (!entry && VACATION_DAYS_TODAY.includes(emp.user)) {
       badge='Vacaciones'; badgeClass='badge-out';
+    } else if (!entry && window.TODAY_JUSTIFICANTES?.includes(emp.user)) {
+      present++; badge='Justificada'; badgeClass='badge-out';
     } else if (!entry) { absent++; badge='Falta'; badgeClass='badge-absent'; }
     else if (entry.late > 0) { present++; late++; badge='Retardo'; badgeClass='badge-late'; }
     else { present++; badge='Presente'; badgeClass='badge-in'; }
@@ -2809,8 +2816,16 @@ async function registerFacialCheck(match) {
       const facialLunch = isFacialWorkday ? (CONFIG.lunchMin || 60) : 0;
       rec.workedMin = Math.max(0, exitMins - effectiveEntry - facialLunch);
       const overMin = exitMins - timeToMinutes(CONFIG.endTime);
+      let isFacialOffice = false;
       const facialEmpData = COLLABS.find(c => c.user === match.userId);
-      const isFacialOffice = facialEmpData?.office || false;
+      if (facialEmpData) {
+        isFacialOffice = facialEmpData.office || false;
+      } else if (navigator.onLine) {
+        try {
+          const officeSnap = await getDocs(query(collection(db, 'users'), where('user', '==', match.userId)));
+          if (!officeSnap.empty) isFacialOffice = officeSnap.docs[0].data().office || false;
+        } catch(e) {}
+      }
       rec.extraMin = isFacialOffice ? 0 : isFacialWorkday ? (overMin >= 30 ? overMin : 0) : rec.workedMin;
     }
   }
