@@ -2732,7 +2732,7 @@ async function scanForFace() {
     // Compare with registered faces
     const queryDescriptor = detection.descriptor;
     let bestMatch = null;
-    let bestDistance = 0.45; // stricter threshold
+    let bestDistance = 0.55; // relaxed threshold
     let secondDistance = 1.0;
 
     facialDescriptors.forEach(fd => {
@@ -2747,7 +2747,7 @@ async function scanForFace() {
     });
 
     // Reject if no clear winner — gap between best and second must be > 0.10
-    if (!bestMatch || (secondDistance - bestDistance) < 0.10) {
+    if (!bestMatch || (secondDistance - bestDistance) < 0.08) {
       document.getElementById('facialScanStatus').textContent = '❌ Rostro no reconocido';
       facialProcessing = false;
       return;
@@ -2979,7 +2979,7 @@ async function startMobileFacialScan() {
       document.getElementById('mobileScanStatus').textContent = '🔍 Reconociendo…';
 
       let bestMatch = null;
-      let bestDistance = 0.45;
+      let bestDistance = 0.55;
       let secondBest = 1.0;
       descriptors.forEach(fd => {
         const dist = faceapi.euclideanDistance(detection.descriptor, fd.descriptor);
@@ -2987,7 +2987,7 @@ async function startMobileFacialScan() {
         else if (dist < secondBest) { secondBest = dist; }
       });
 
-      if (!bestMatch || (secondBest - bestDistance) < 0.10) {
+      if (!bestMatch || (secondBest - bestDistance) < 0.08) {
         document.getElementById('mobileScanStatus').textContent = '❌ No reconocido';
         setTimeout(scanLoop, 2000);
         return;
