@@ -1405,9 +1405,19 @@ async function registerCheck(type) {
       } else {
         const endMins = timeToMinutes(CONFIG.endTime);
         const overMin = exitMins - endMins;
-        // Skip extras for office employees
+        // Skip extras for office employees — check COLLABS, then currentUser, then Firebase as fallback
+        let isOffice = false;
         const empData = COLLABS.find(c => c.user === currentUser.user);
-        const isOffice = empData?.office || currentUser?.office;
+        if (empData) {
+          isOffice = !!empData.office;
+        } else if (typeof currentUser?.office !== 'undefined') {
+          isOffice = !!currentUser.office;
+        } else if (navigator.onLine) {
+          try {
+            const officeSnap = await getDocs(query(collection(db, 'users'), where('user', '==', currentUser.user)));
+            if (!officeSnap.empty) isOffice = !!officeSnap.docs[0].data().office;
+          } catch(e) {}
+        }
         rec.extraMin = (!isOffice && overMin >= 30) ? overMin : 0;
       }
     }
@@ -2835,12 +2845,24 @@ async function registerFacialCheck(match) {
       let isFacialOffice = false;
       const facialEmpData = COLLABS.find(c => c.user === match.userId);
       if (facialEmpData) {
-        isFacialOffice = facialEmpData.office || false;
-      } else if (navigator.onLine) {
-        try {
-          const officeSnap = await getDocs(query(collection(db, 'users'), where('user', '==', match.userId)));
-          if (!officeSnap.empty) isFacialOffice = officeSnap.docs[0].data().office || false;
-        } catch(e) {}
+        isFacialOffice = !!facialEmpData.office;
+      } else {
+        // Try Firebase regardless of navigator.onLine (App Check may need a moment)
+        let resolved = false;
+        for (let attempt = 0; attempt < 2 && !resolved; attempt++) {
+          try {
+            const officeSnap = await getDocs(query(collection(db, 'users'), where('user', '==', match.userId)));
+            if (!officeSnap.empty) {
+              isFacialOffice = !!officeSnap.docs[0].data().office;
+              resolved = true;
+            } else {
+              resolved = true; // user not found, stop trying
+            }
+          } catch(e) {
+            console.warn('Office check attempt failed:', e);
+            if (attempt === 0) await new Promise(r => setTimeout(r, 500)); // retry once after brief wait
+          }
+        }
       }
       rec.extraMin = isFacialOffice ? 0 : isFacialWorkday ? (overMin >= 30 ? overMin : 0) : rec.workedMin;
     }
