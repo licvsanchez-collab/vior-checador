@@ -1390,13 +1390,13 @@ async function registerCheck(type) {
     if (entryRec) {
       const rawEntryMins = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
       const startMins = timeToMinutes(CONFIG.startTime);
-      // Effective start = max(actual checkin, official start time)
-      const entryMins = Math.max(rawEntryMins, startMins);
-      const exitMins = timeToMinutes(timeStr24);
-      const worked = exitMins - entryMins;
       const workDays = CONFIG.workDays || [1,2,3,4,5];
       const todayDow = new Date().getDay();
       const isWorkday = workDays.includes(todayDow);
+      // Effective start = max(actual checkin, official start time) — only on workdays
+      const entryMins = isWorkday ? Math.max(rawEntryMins, startMins) : rawEntryMins;
+      const exitMins = timeToMinutes(timeStr24);
+      const worked = exitMins - entryMins;
       const lunchMin = isWorkday ? (CONFIG.lunchMin || 60) : 0; // no lunch deduction on weekends
       rec.workedMin = Math.max(0, worked - lunchMin);
       if (!isWorkday) {
@@ -2206,10 +2206,10 @@ async function saveManualRecord() {
       const entryRec = dayRecords.find(r => r.type === 'entry');
       if (entryRec) {
         const rawEntry = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
-        const effectiveEntry = Math.max(rawEntry, timeToMinutes(CONFIG.startTime));
         const exitMins = timeToMinutes(time24);
         const manualDow = new Date(date + 'T12:00:00').getDay();
         const isManualWorkday = (CONFIG.workDays || [1,2,3,4,5]).includes(manualDow);
+        const effectiveEntry = isManualWorkday ? Math.max(rawEntry, timeToMinutes(CONFIG.startTime)) : rawEntry;
         const lunchMin = isManualWorkday ? (CONFIG.lunchMin || 60) : 0;
         rec.workedMin = Math.max(0, exitMins - effectiveEntry - lunchMin);
         const overMin = exitMins - timeToMinutes(CONFIG.endTime);
@@ -2825,10 +2825,10 @@ async function registerFacialCheck(match) {
     const entryRec = todayRecs.find(r => r.type === 'entry');
     if (entryRec) {
       const rawEntry = entryRec.time24 ? timeToMinutes(entryRec.time24) : timeToMinutes(entryRec.time);
-      const effectiveEntry = Math.max(rawEntry, timeToMinutes(CONFIG.startTime));
       const exitMins = timeToMinutes(timeStr24);
       const facialDow = new Date(todayStr() + 'T12:00:00').getDay();
       const isFacialWorkday = (CONFIG.workDays || [1,2,3,4,5]).includes(facialDow);
+      const effectiveEntry = isFacialWorkday ? Math.max(rawEntry, timeToMinutes(CONFIG.startTime)) : rawEntry;
       const facialLunch = isFacialWorkday ? (CONFIG.lunchMin || 60) : 0;
       rec.workedMin = Math.max(0, exitMins - effectiveEntry - facialLunch);
       const overMin = exitMins - timeToMinutes(CONFIG.endTime);
